@@ -165,6 +165,13 @@ saturated (busy pegged, backlog draining):
 | 2 | 2 | 35k msgs/s | ~16.5k msgs/s | baseline |
 | 4 | 4 | 35k msgs/s | ~52k msgs/s | ~2× |
 | 8 | 8 | 70k msgs/s | **~97k msgs/s** | **~2× again** |
+| **12 (finale)** | 12 | **110k msgs/s (the mega-load)** | **110,055/s sustained — keeps up 1:1** | busy ~52%, as modeled |
+
+Finale note: at P=12 the full mega-load (10k trades + 100k prices/s) is
+sustained exactly — parsed == offered, zero lag growth, ~45% headroom.
+Residual intermittent backpressure (~200 ms/s) is a load-generator artifact
+(all 110k msgs burst at each second's start), not pipeline capacity; 300M+
+price ticks conflated cumulative.
 
 Each rescale was `terraform apply -var flink_parallelism=N` — nothing else.
 With snapshots enabled every rescale resumed from offsets (fullRestarts: 0

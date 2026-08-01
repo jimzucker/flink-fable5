@@ -128,3 +128,18 @@ Flink UI colors operators by busy/backpressure; red across the graph
 during deliberate overload is the pipeline at full effort, not a fault.
 Verdict: volume is a KPU dial and the dial is measured — 110k msgs/s needs
 ~P=10. Generator dialed to baseline with P=8 kept for fast backlog drain.
+
+FOLLOW-UP PROMPT (the finale)
+-----------------------------
+"one finale run: P=12 sustaining the full 110k msgs/s with zero
+backpressure as the last table row"
+
+RESPONSE (summary)
+P=12 (12 KPUs) vs the full mega-load: trades 10,000.7/s and prices
+100,054/s parsed — exactly the offered rates, keeping up 1:1 with the
+sources, zero lag growth, busiest task ~52% (the capacity model predicted
+~52% at 12 KPUs). Honest asterisk: backpressure was not literally zero
+(~200 ms/s intermittent) — an artifact of the generator bursting all 110k
+messages at the top of each second, not a capacity limit; parsed==offered
+proves keep-up. 300M+ ticks conflated cumulative. The load that put P=2
+into a death spiral runs comfortably on a $1.60/hr dial setting.

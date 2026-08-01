@@ -81,6 +81,7 @@ All config-only changes, measured with Prometheus + per-record write latency:
 | Price storm 10,000 ticks/s (post-fix) | order latency flat, 99.6% of ticks conflated, **240× less work** |
 | AWS (same jar, MSK + Managed Flink) | every case re-passed; storm at 17% busy on 2 KPUs |
 | AWS scaling ladder P=2→4→8 | **16.5k → 52k → 97k msgs/s** — config-only rescales, zero restarts |
+| Finale: P=12 vs the 110k msgs/s mega-load | **sustained 1:1 with the sources, ~45% headroom** — as the capacity model predicted |
 
 ## 5. The bugs are the best part
 
@@ -143,7 +144,9 @@ unless they're in a special metric group — all now in the repo's runbook).
 Then the question that matters: *can it handle the volume?* We offered the
 pipeline more than it could chew and turned one Terraform variable:
 parallelism 2 → 4 → 8 processed 16.5k → 52k → 97k messages/sec at
-saturation, with zero job restarts across rescales. Volume is a dial, the
+saturation, with zero job restarts across rescales — and the finale run at
+P=12 sustained the full 110k msgs/sec mega-load 1:1 with the sources,
+exactly where the capacity model said it would. Volume is a dial, the
 dial costs ~$0.12/hour per 12k msgs/sec, and the next 3-5× (binary
 serialization instead of JSON) is identified and priced before anyone
 needs it.
