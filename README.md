@@ -1,67 +1,159 @@
-# flink-demo
+# Real-Time Positions & Market Value on Apache Flink
 
-Deterministic Flink streaming demo: mocked block trades and ticking prices in Kafka,
-real-time positions and market values out. Runs on a laptop with Docker Compose,
-deploys to AWS with the same jar. See [PLAN.md](PLAN.md) for the design and phase plan.
+A deterministic streaming pipeline: mocked block trades and ticking prices go into
+Kafka; live **positions** and **market values** (by account and by ticker) come out —
+exact to the penny, deduplicated, fully observable, and load-tested. Runs on a laptop
+with one command; deploys to AWS with the **same jar** via Terraform.
 
-## Quick start (laptop)
+> Built in one day with [Claude Code](https://claude.com/claude-code) from a 25-line
+> requirements file. Six engineering prompts drove the whole build — all of them
+> recorded in [`prompts/`](prompts/). The story: [docs/LINKEDIN_ARTICLE.md](docs/LINKEDIN_ARTICLE.md).
+
+## Headline results
+
+| Claim | Evidence |
+|---|---|
+| **1,000 orders/sec, latency unchanged** | p50 96 ms at 1000/s vs 100 ms at 10/s; ~5% CPU, zero backpressure ([results](docs/PERF_RESULTS.md)) |
+| **Extreme prices can't hurt the order path** | $10¹³ price at 1000/s: identical throughput, MV exact to 19 digits |
+| **Linear scaling, config-only** | parallelism 1→2 = 2.0× measured at saturation; rescale is one property |
+| **Provably correct** | 14 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
+| **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    GEN[Seeded generator<br/>rates & universe via config] -->|trades| T[(Kafka: trades)]
+    GEN -->|prices| P[(Kafka: prices)]
+    T --> PT[parse-trade] --> DD[dedup by trade_id<br/>keyed state + TTL]
+    P --> PP[parse-price<br/>exact long cents]
+    DD --> PA[position by<br/>account+ticker] & PB[position by ticker]
+    PA --> MVA[mv by account+ticker<br/>position x latest price]
+    PB --> MVB[mv by ticker]
+    PP --> MVA & MVB
+    PA & PB & MVA & MVB --> OUT[(4 Kafka output topics<br/>keyed upsert streams)]
+    OUT -.-> PROM[Prometheus] -.-> GRAF[Grafana<br/>12-panel dashboard]
+```
+
+The real thing — the Flink job graph, running (7 operator chains, parallelism 2):
+
+![Flink job graph](docs/images/flink-job-graph.png)
+
+## Quick start
 
 Prereqs: JDK 17+, Maven, Docker Desktop.
 
 ```bash
-make up          # builds the jar, starts Kafka + Flink + generator + Prometheus + Grafana
+make up          # build jar, start Kafka + Flink + generator + Prometheus + Grafana
 make positions   # tail the position-by-account-ticker output topic
 make status      # Flink job status via REST
+make down        # stop everything (make clean also wipes state)
 ```
 
-UIs:
-- Flink dashboard: http://localhost:8081
-- Grafana: http://localhost:3000 (anonymous admin enabled for demo)
-- Prometheus: http://localhost:9090
+| UI | URL |
+|---|---|
+| Flink dashboard | http://localhost:8081 |
+| Grafana (dashboard auto-provisioned) | http://localhost:3000/d/flink-demo |
+| Prometheus | http://localhost:9090 |
 
-Stop everything: `make down` (add `make clean` to also wipe state).
+## Data contracts
 
-## Changing behavior — no rebuild needed
+All messages are JSON; output topics are keyed **upsert streams** (latest record per
+key is the current state).
 
-Edit [config/application.properties](config/application.properties) and restart the
-affected container (`docker compose restart generator`, or resubmit the job). Knobs:
-generator rates, universe sizes, seed, duplicate ratio, price override (perf Case 2),
-pipeline parallelism, checkpoint interval, dedup TTL.
+| Topic | Direction | Key | Schema |
+|---|---|---|---|
+| `trades` | in | trade_id | `{trade_id, account, ticker, qty, event_time}` |
+| `prices` | in | symbol | `{symbol, price ("184.52"), event_time}` |
+| `position-by-account-ticker` | out | account\|ticker | `{account, ticker, net_qty, as_of}` |
+| `position-by-ticker` | out | ticker | `{ticker, net_qty, as_of}` |
+| `mv-by-account-ticker` | out | account\|ticker | `{account, ticker, net_qty, price, mv, as_of}` |
+| `mv-by-ticker` | out | ticker | `{ticker, net_qty, price, mv, as_of}` |
 
-## Current pipeline (Phase 3)
+## Design decisions worth knowing
 
-```
-trades -> parse -> dedup(trade_id, TTL state) -+-> position by account+ticker -+-> Kafka
-                                               |                               +-> (x latest price) mv by account+ticker -> Kafka
-                                               +-> position by ticker         -+-> Kafka
-                                                                               +-> (x latest price) mv by ticker -> Kafka
-prices -> parse (exact long cents) ----------------> latest price per ticker (keyed co-process joins)
-```
-
-All money math is exact (long cents / BigDecimal) — no floating point, any price magnitude.
+- **Dedup**: keyed state on `trade_id` with a TTL — first occurrence wins, replays are
+  absorbed idempotently. Restart-safe: generator runs namespace their trade ids.
+- **Money is never a float**: prices parse to long cents; market value is BigDecimal
+  from long cents. Exact at any magnitude — that's why the extreme-price case is safe
+  *by construction*, not by tuning.
+- **AT_LEAST_ONCE + keyed upserts** instead of transactional sinks: outputs are
+  full-state snapshots per key, so replays are harmless and consumers need no
+  read-committed complexity. (Checkpointing itself is exactly-once.)
+- **Determinism**: seeded generator, commutative position sums, exact math — same
+  inputs produce identical final state, proven by test.
+- **Everything is configuration** ([config/application.properties](config/application.properties)):
+  generator rates, universe, seed, duplicate ratio, price override, parallelism,
+  checkpoint interval, dedup TTL. No behavior change requires a rebuild.
 
 ## Observability
 
-Grafana auto-provisions the **"Flink Demo — Pipeline Observability"** dashboard
-(http://localhost:3000/d/flink-demo): records/sec and totals per operator, volume
-in/out in bytes/sec (KB/s) per parser and sink, duplicates dropped, malformed
-records, checkpoint duration/size, busy/backpressure time per task, Kafka lag.
-Custom metrics carry the `demo` prefix (`demoBytesInPerSecond`,
-`user_demoBytesOutPerSecond`, `demoDuplicatesDropped`, ...).
+Every operator reports records in/out, rates, and real serialized **bytes/sec**;
+plus duplicates dropped, malformed counts, checkpoint duration/size, busy vs
+backpressured time per task, and Kafka consumer lag. Grafana auto-provisions this
+dashboard (colors are CVD-validated and pinned per operator):
 
-Tail any output topic: `make tail TOPIC=mv-by-ticker`
+![Grafana dashboard](docs/images/grafana-dashboard.png)
 
-## AWS
-
-`infra/` holds the full Terraform stack (MSK Serverless + Managed Service for
-Apache Flink + Fargate generator + CloudWatch dashboard) — same jar, config-only
-differences, rescale with `terraform apply -var flink_parallelism=N`.
-See [docs/AWS_RUNBOOK.md](docs/AWS_RUNBOOK.md).
+Tail any topic: `make tail TOPIC=mv-by-ticker`
 
 ## Correctness
 
-- `make test` — 14 JUnit tests: operator harnesses + a hand-computed golden
-  end-to-end dataset (see [VALIDATION.md](VALIDATION.md))
-- `make validate` — recomputes all outputs independently from the raw Kafka
-  topics on the running stack and checks dedup, reproducibility, completeness
-  (Σ accounts == ticker) and exact market values
+```bash
+make test        # 14 JUnit tests: real operators under Flink test harnesses,
+                 # incl. a hand-computed golden dataset and duplicate injection
+make validate    # pauses the generator, dumps all six topics, independently
+                 # recomputes every output in Python, compares exactly:
+                 # dedup, reproducibility, completeness (Σ accounts == ticker),
+                 # market values to the penny
+```
+
+The one-page "how we know the numbers are right": [VALIDATION.md](VALIDATION.md)
+
+## Performance & scaling
+
+Measured with [`scripts/perf_probe.py`](scripts/perf_probe.py) (Prometheus sampling +
+per-record write latency) and [`scripts/scaling_test.py`](scripts/scaling_test.py)
+(capacity via backlog drain at saturation). Full tables and the demo script for
+explaining every number: [docs/PERF_RESULTS.md](docs/PERF_RESULTS.md)
+
+| | baseline 10/s | 1,000/s | 1,000/s + $10¹³ price |
+|---|---|---|---|
+| busiest task | 0.9% | 5.2% | 4.9% |
+| backpressure / lag | 0 / 0 | 0 / 0 | 0 / 0 |
+| latency p50 | 100 ms | **96 ms** | 118 ms |
+
+Capacity at saturation: P=1 ≈ 7,000 rec/s → P=2 ≈ 14,300 (2.0×, linear) → P=4
+host-limited on an 8-core Docker VM.
+
+## AWS
+
+[`infra/`](infra/) is a complete, validated Terraform stack: **MSK Serverless**
+(IAM auth) + **Amazon Managed Service for Apache Flink** (same jar, from versioned
+S3) + Fargate generator + CloudWatch dashboard. Rescale with
+`terraform apply -var flink_parallelism=N`. Deploy/update/teardown:
+[docs/AWS_RUNBOOK.md](docs/AWS_RUNBOOK.md) (≈ $1/hr while running).
+
+## Repository map
+
+```
+src/main/java/…/pipeline/    Flink job: parsers, dedup, aggregators, MV joins, sinks
+src/main/java/…/generator/   seeded Kafka data generator (same jar, plain-JRE main)
+src/test/java/               operator-harness tests + golden end-to-end dataset
+config/                      every runtime knob, laptop and generator alike
+docker-compose.yml           Kafka (KRaft) + Flink + generator + Prometheus + Grafana
+monitoring/                  Prometheus config, provisioned Grafana dashboard
+infra/                       Terraform for AWS (MSK, Managed Flink, Fargate, CloudWatch)
+scripts/                     validate_live.py, perf_probe.py, scaling_test.py
+prompts/                     the six engineering prompts that built this, per phase
+docs/                        PLAN follow-ups: perf results, AWS runbook, article, exec deck
+PLAN.md / VALIDATION.md      the design doc and the correctness one-pager
+```
+
+## Provenance
+
+The project followed a six-phase plan ([PLAN.md](PLAN.md)), each phase ending in a
+review: design → walking skeleton → full calculations + dashboard → correctness
+suite → AWS IaC → load tests. Git history mirrors it: one squash commit per phase,
+tagged `Phase-2`…`Phase-6`, with the detailed history preserved on the phase
+branches. Executive summary deck: [docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).
