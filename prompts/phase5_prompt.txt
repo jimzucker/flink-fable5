@@ -1,0 +1,49 @@
+Phase 5 — AWS Deployment (session 2026-08-01, Claude Code / Fable 5)
+====================================================================
+
+PROMPT 11
+---------
+"proceed with phase 5"
+
+RESPONSE (summary)
+Delivered the complete AWS deployment as Terraform IaC on branch
+phase5-aws-deploy. No AWS credentials were configured on the machine, so the
+stack is validated (terraform validate clean via Docker) and ready to apply —
+the apply itself is the user's call since it creates billable resources
+(~$1/hr; see cost note in the runbook).
+
+Architecture (same jar as the laptop, config-only differences):
+- MSK Serverless (Kafka) with IAM auth (SASL_SSL / AWS_MSK_IAM)
+- Amazon Managed Service for Apache Flink, FLINK-1_20 runtime, VPC-attached,
+  jar from versioned S3, OPERATOR-level monitoring so all custom demo*
+  metrics reach CloudWatch
+- Generator on ECS Fargate (ECR image, same jar, args from Terraform vars)
+- CloudWatch dashboard (SEARCH-expression widgets mirroring local Grafana:
+  records/sec, volume in/out, duplicates, busy/backpressure, checkpoints)
+- VPC with private subnets + NAT, least-privilege IAM (kafka-cluster:* scoped
+  to cluster/topic/group ARNs), 7-day log retention, force_destroy for clean
+  teardown
+
+Code changes to make the same jar run on AWS:
+- AppConfig now layers config: MSF runtime properties (FlinkApplicationProperties
+  group) -> --config file -> --key value args; inert off-AWS
+- kafka.props.* passthrough: any such config key becomes a raw Kafka client
+  property on sources, sinks, generator producer and admin client — this is
+  how MSK IAM auth is enabled with zero code changes
+- Generator creates all six topics idempotently at startup (config-driven
+  partitions), replacing the docker-compose kafka-init container on AWS
+- New deps bundled: aws-kinesisanalytics-runtime, aws-msk-iam-auth
+
+Ops (docs/AWS_RUNBOOK.md + Makefile targets):
+- Deploy from scratch: make build; terraform apply; make aws-push-generator
+- Update code: make build; terraform apply (jar hash -> new S3 version -> MSF
+  in-place update)
+- Rescale config-only: terraform apply -var flink_parallelism=4
+- Perf cases are tfvars-only: -var generator_trades_per_sec=1000,
+  -var generator_price_cents_override=10^15
+- Teardown: terraform destroy
+
+Verified: terraform validate clean; mvn test still 14/14 green; local stack
+resubmitted with the AWS-enabled jar and confirmed running end to end.
+
+Squash-merged phase5-aws-deploy into main (branch kept), tagged Phase-5.

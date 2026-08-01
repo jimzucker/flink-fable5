@@ -39,3 +39,18 @@ status:
 
 clean: down
 	rm -rf target data
+
+# --- AWS (see docs/AWS_RUNBOOK.md) ---
+REGION ?= us-east-1
+ECR_REPO = $(shell cd infra && terraform output -raw generator_ecr_repo 2>/dev/null)
+
+aws-push-generator: build
+	aws ecr get-login-password --region $(REGION) | docker login --username AWS --password-stdin $(ECR_REPO)
+	docker build -f docker/generator.Dockerfile -t $(ECR_REPO):latest .
+	docker push $(ECR_REPO):latest
+
+aws-deploy: build
+	cd infra && terraform apply
+
+aws-destroy:
+	cd infra && terraform destroy

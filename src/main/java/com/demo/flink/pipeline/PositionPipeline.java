@@ -80,7 +80,7 @@ public final class PositionPipeline {
                 .name("position-by-account-ticker").uid("position-by-account-ticker");
 
         accountPositions
-                .sinkTo(jsonSink(bootstrap, params.get("topic.position.account.ticker", "position-by-account-ticker"),
+                .sinkTo(jsonSink(params, params.get("topic.position.account.ticker", "position-by-account-ticker"),
                         (Position p) -> p.account + "|" + p.ticker))
                 .name("sink-position-account-ticker").uid("sink-position-account-ticker");
 
@@ -91,7 +91,7 @@ public final class PositionPipeline {
                 .name("position-by-ticker").uid("position-by-ticker");
 
         tickerPositions
-                .sinkTo(jsonSink(bootstrap, params.get("topic.position.ticker", "position-by-ticker"),
+                .sinkTo(jsonSink(params, params.get("topic.position.ticker", "position-by-ticker"),
                         (TickerPosition p) -> p.ticker))
                 .name("sink-position-ticker").uid("sink-position-ticker");
 
@@ -103,7 +103,7 @@ public final class PositionPipeline {
                 .name("mv-by-account-ticker").uid("mv-by-account-ticker");
 
         mvByAccount
-                .sinkTo(jsonSink(bootstrap, params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
+                .sinkTo(jsonSink(params, params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
                         (MarketValue mv) -> mv.account + "|" + mv.ticker))
                 .name("sink-mv-account-ticker").uid("sink-mv-account-ticker");
 
@@ -115,7 +115,7 @@ public final class PositionPipeline {
                 .name("mv-by-ticker").uid("mv-by-ticker");
 
         mvByTicker
-                .sinkTo(jsonSink(bootstrap, params.get("topic.mv.ticker", "mv-by-ticker"),
+                .sinkTo(jsonSink(params, params.get("topic.mv.ticker", "mv-by-ticker"),
                         (MarketValue mv) -> mv.ticker))
                 .name("sink-mv-ticker").uid("sink-mv-ticker");
 
@@ -130,14 +130,16 @@ public final class PositionPipeline {
                 .setGroupId(params.get("kafka.group.id", defaultGroup) + "-" + topic)
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
+                .setProperties(params.kafkaProps())
                 .build();
     }
 
-    private static <T> KafkaSink<T> jsonSink(String bootstrap, String topic, JsonKafkaSerializer.KeyFn<T> keyFn) {
+    private static <T> KafkaSink<T> jsonSink(AppConfig params, String topic, JsonKafkaSerializer.KeyFn<T> keyFn) {
         return KafkaSink.<T>builder()
-                .setBootstrapServers(bootstrap)
+                .setBootstrapServers(params.get("kafka.bootstrap.servers", "localhost:29092"))
                 .setRecordSerializer(new JsonKafkaSerializer<>(topic, keyFn))
                 .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+                .setKafkaProducerConfig(params.kafkaProps())
                 .build();
     }
 }

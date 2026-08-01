@@ -4,8 +4,11 @@ import com.demo.flink.common.AppConfig;
 import com.demo.flink.common.JsonUtil;
 import com.demo.flink.model.Price;
 import com.demo.flink.model.Trade;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.errors.TopicExistsException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -13,8 +16,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Seeded mock producer for trades and ticking prices. All content (accounts, tickers,
@@ -62,6 +67,35 @@ public final class DataGenerator {
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("acks", "all");
         props.put("linger.ms", "5");
+        props.putAll(params.kafkaProps()); // e.g. MSK IAM auth on AWS
+
+        // Idempotent topic creation (config-driven partitions) — replaces the
+        // docker-compose kafka-init container when running against MSK.
+        int partitions = params.getInt("topics.partitions", 0);
+        if (partitions > 0) {
+            Properties adminProps = new Properties();
+            adminProps.put("bootstrap.servers", bootstrap);
+            adminProps.putAll(params.kafkaProps());
+            List<String> topics = List.of(
+                    tradesTopic, pricesTopic,
+                    params.get("topic.position.account.ticker", "position-by-account-ticker"),
+                    params.get("topic.position.ticker", "position-by-ticker"),
+                    params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
+                    params.get("topic.mv.ticker", "mv-by-ticker"));
+            try (AdminClient admin = AdminClient.create(adminProps)) {
+                for (String topic : topics) {
+                    try {
+                        admin.createTopics(List.of(
+                                new NewTopic(topic, Optional.of(partitions), Optional.empty()))).all().get();
+                        System.out.println("generator: created topic " + topic);
+                    } catch (ExecutionException e) {
+                        if (!(e.getCause() instanceof TopicExistsException)) {
+                            throw e;
+                        }
+                    }
+                }
+            }
+        }
 
         long tradeSeq = 0;
         long tradesSent = 0;

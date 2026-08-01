@@ -20,7 +20,18 @@ public final class AppConfig implements Serializable {
 
     public static AppConfig load(String[] args) throws IOException {
         AppConfig config = new AppConfig();
-        // First pass: locate --config and load the file
+        // Base layer: Managed Service for Apache Flink runtime properties (no-op elsewhere)
+        try {
+            java.util.Map<String, Properties> groups =
+                    com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime.getApplicationProperties();
+            Properties msf = groups == null ? null : groups.get("FlinkApplicationProperties");
+            if (msf != null) {
+                config.props.putAll(msf);
+            }
+        } catch (Throwable ignored) {
+            // not running on MSF — file/args below are the source of truth
+        }
+        // Next: locate --config and load the file
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--config")) {
                 try (InputStream in = new FileInputStream(args[i + 1])) {
@@ -55,5 +66,20 @@ public final class AppConfig implements Serializable {
 
     public double getDouble(String key, double defaultValue) {
         return has(key) ? Double.parseDouble(props.getProperty(key).trim()) : defaultValue;
+    }
+
+    /**
+     * Passthrough Kafka client properties: every `kafka.props.<x>=<v>` config entry
+     * becomes `<x>=<v>` on the consumer/producer — how MSK IAM auth (SASL_SSL etc.)
+     * is enabled on AWS with zero code changes.
+     */
+    public Properties kafkaProps() {
+        Properties kafka = new Properties();
+        for (String name : props.stringPropertyNames()) {
+            if (name.startsWith("kafka.props.")) {
+                kafka.setProperty(name.substring("kafka.props.".length()), props.getProperty(name));
+            }
+        }
+        return kafka;
     }
 }
