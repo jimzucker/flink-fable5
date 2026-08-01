@@ -73,6 +73,30 @@ level): `numRecordsOutPerSecond`, `demoBytesInPerSecond`,
 cd infra && terraform destroy       # force_destroy on bucket/ECR handles contents
 ```
 
+## Deployment gotchas (learned the hard way, 2026-08-01)
+
+1. **Build for Java 11.** MSF's FLINK-1_20 runtime is Java 11; Java 17
+   bytecode fails with "entry point class could not be loaded due to a
+   linkage failure." `maven.compiler.release` is 11 in the pom — and if you
+   change it, **`mvn clean package`**: an incremental build keeps stale
+   classes when only the pom changed. Verify before uploading:
+   `unzip -p target/flink-demo.jar <cls>.class | head -c 8 | od -A n -t u1`
+   → 8th byte 55 = Java 11.
+2. **Build the generator image for linux/amd64.** On Apple Silicon:
+   `docker build --platform linux/amd64 ...` or Fargate fails with
+   `CannotPullContainerError ... does not contain descriptor matching
+   platform`.
+3. **MSF destroy→recreate races AWS tag propagation.** If apply fails with
+   `ConcurrentModificationException: Tags are already registered` but the
+   app then exists, Terraform doesn't know it owns it:
+   `terraform import aws_kinesisanalyticsv2_application.this <arn>` then
+   re-apply.
+4. **After a failed start the app returns to READY silently** — check
+   `aws logs tail /aws/kinesis-analytics/flink-demo` for the real error;
+   `start_application=true` in Terraform does not re-start an app that
+   failed once.
+5. zsh: `"$VAR:latest"` triggers the `:l` modifier — write `"${VAR}:latest"`.
+
 ## Cost note (rough, us-east-1)
 
 MSF ~2 KPU ≈ $0.22/hr; MSK Serverless ≈ $0.75/hr cluster + usage; NAT ≈

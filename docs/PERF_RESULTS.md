@@ -105,6 +105,23 @@ the full validation suite passed on the storm data (181k trades, 1.81M prices,
 because final state is still position × latest price. Bound by construction:
 price-driven work ≤ holders × (1000/interval) per ticker/sec at any tick rate.
 
+## Phase 8 — AWS results (MSK Serverless + Managed Flink, us-east-1)
+
+Same jar, same config knobs as tfvars; measured with
+`scripts/aws_perf_probe.py` (CloudWatch, 1-min granularity, rates calibrated
+×parallelism after checking against the known 10/s baseline).
+
+| | AWS baseline (10 t/s, 20 p/s) | Case 1 (1000 t/s) | Storm (10k p/s, 50 accts) |
+|---|---|---|---|
+| trades parsed | 10.0/s | *(appended when measured)* | |
+| prices parsed | 20.0/s | | |
+| dedup out | 9.6/s | | |
+| MV emissions | ~53/s (conflated) | | |
+| busiest task | 5 ms/s | | |
+| backpressure | 0 | | |
+
+Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
+
 ## How to explain the numbers (demo script)
 
 1. Open Grafana → records/sec panel: parse_trade tracks the generator rate;

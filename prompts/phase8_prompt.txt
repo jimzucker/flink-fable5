@@ -1,0 +1,54 @@
+Phase 8 — AWS Deployment & Load Tests (session 2026-08-01, Claude Code / Fable 5)
+=================================================================================
+
+PROMPT 8
+--------
+"what is needed to be able to deploy to aws" -> "creds done" -> (permission
+granted for terraform apply) -> "run the load tests on aws"
+
+RESPONSE (summary of the deployment)
+------------------------------------
+Prerequisites resolved interactively: AWS credentials (aws configure; account
+760967184165, us-east-1) and Terraform (brew tap hashicorp/tap — Terraform
+left Homebrew core after the license change).
+
+terraform apply built the full stack: VPC + private subnets + NAT, MSK
+Serverless (IAM auth), S3 (versioned jar), Managed Flink application
+(FLINK-1_20, VPC-attached, OPERATOR-level CloudWatch metrics), ECS Fargate
+generator via ECR, CloudWatch dashboard, least-privilege IAM.
+
+Real-world deployment bumps, each found by verifying and each now captured
+in the runbook:
+1. JAVA VERSION: MSF's Flink 1.20 runtime is Java 11; the jar was Java 17
+   bytecode -> "linkage failure" on start. Changed maven.compiler.release
+   to 11... and hit bump #2:
+2. STALE INCREMENTAL BUILD: mvn package without clean kept the Java 17
+   classes (only the pom changed; sources looked fresh) — the "fixed" jar
+   still failed identically. Verified bytecode version byte (61 vs 55)
+   straight out of the jar; mvn clean package fixed it for real.
+3. IMAGE ARCHITECTURE: docker build on Apple Silicon produced arm64; Fargate
+   task wanted linux/amd64 -> CannotPullContainerError. Rebuilt with
+   --platform linux/amd64.
+4. AWS TAG-PROPAGATION RACE: destroy+recreate of the MSF app with the same
+   name failed with ConcurrentModificationException while one retry
+   succeeded server-side without Terraform knowing -> split-brain. Fixed
+   with terraform import + reconcile apply.
+5. zsh trivia: "$ECR:latest" invokes the :l history modifier — use
+   "${ECR}:latest".
+
+End state: app RUNNING (all operator chains up), generator in ECS steady
+state producing against MSK, metrics flowing to CloudWatch.
+
+AWS LOAD TESTS (scripts/aws_perf_probe.py — CloudWatch SEARCH queries,
+rates scaled by parallelism after calibrating against the known baseline)
+
+STEP 1 — BASELINE (10 trades/s, 20 prices/s, 5 accounts, parallelism 2):
+  trades 10.0/s, prices 20.0/s, dedup out 9.6/s (5% dups), MV ~53/s
+  (conflation active), busiest task 5 ms/s (0.5%), backpressure 0.
+  Pipeline behavior identical to the laptop baseline.
+
+STEP 2 — CASE 1 (1000 trades/s, tfvar-only): results appended below.
+
+STEP 3 — STORM (1000 trades/s + 10,000 prices/s + 50 accounts, the exact
+load that saturated the pre-conflation design locally): results appended
+below.
