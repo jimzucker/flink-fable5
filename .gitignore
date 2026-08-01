@@ -5,3 +5,7 @@ data/
 .DS_Store
 *.swp
 dependency-reduced-pom.xml
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars

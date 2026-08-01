@@ -51,6 +51,13 @@ Custom metrics carry the `demo` prefix (`demoBytesInPerSecond`,
 
 Tail any output topic: `make tail TOPIC=mv-by-ticker`
 
+## AWS
+
+`infra/` holds the full Terraform stack (MSK Serverless + Managed Service for
+Apache Flink + Fargate generator + CloudWatch dashboard) — same jar, config-only
+differences, rescale with `terraform apply -var flink_parallelism=N`.
+See [docs/AWS_RUNBOOK.md](docs/AWS_RUNBOOK.md).
+
 ## Correctness
 
 - `make test` — 14 JUnit tests: operator harnesses + a hand-computed golden
