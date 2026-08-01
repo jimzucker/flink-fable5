@@ -96,6 +96,15 @@ cd infra && terraform destroy       # force_destroy on bucket/ECR handles conten
    `start_application=true` in Terraform does not re-start an app that
    failed once.
 5. zsh: `"$VAR:latest"` triggers the `:l` modifier — write `"${VAR}:latest"`.
+6. **MSF silently drops plain custom metrics.** User metrics reach CloudWatch
+   only when registered under a `kinesisanalytics` metric group
+   (`group.addGroup("kinesisanalytics").counter(...)`); they then appear with
+   `Application + Task` dimensions. This repo dual-registers via
+   `DemoMetrics` so Prometheus (local) and CloudWatch (AWS) both see them.
+7. **Dashboard dimensioning:** built-in operator metrics use
+   `Task`/`TaskOperator` dimensions (not `Operator`); custom metrics land at
+   `Task` level. CloudWatch metrics are 1-min granularity — expect ~7-8 min
+   per load-test iteration vs seconds with local Prometheus.
 
 ## Cost note (rough, us-east-1)
 

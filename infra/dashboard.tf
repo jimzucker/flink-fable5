@@ -5,23 +5,23 @@ locals {
   dash_widget = { for i, w in [
     {
       title = "Records/sec out — by operator"
-      query = "SEARCH('{AWS/KinesisAnalytics,Application,Operator} MetricName=\"numRecordsOutPerSecond\" Application=\"${var.project}\"', 'Average')"
+      query = "SEARCH('{AWS/KinesisAnalytics,Application,Task,TaskOperator} MetricName=\"numRecordsOutPerSecond\" Application=\"${var.project}\"', 'Average')"
     },
     {
       title = "Records out (total) — by operator"
-      query = "SEARCH('{AWS/KinesisAnalytics,Application,Operator} MetricName=\"numRecordsOut\" Application=\"${var.project}\"', 'Maximum')"
+      query = "SEARCH('{AWS/KinesisAnalytics,Application,Task,TaskOperator} MetricName=\"numRecordsOut\" Application=\"${var.project}\"', 'Maximum')"
     },
     {
       title = "Volume in — bytes/sec per parser"
-      query = "SEARCH('{AWS/KinesisAnalytics,Application,Operator} MetricName=\"demoBytesInPerSecond\" Application=\"${var.project}\"', 'Average')"
+      query = "SEARCH('{AWS/KinesisAnalytics,Application,Task} MetricName=\"demoBytesInPerSecond\" Application=\"${var.project}\"', 'Average')"
     },
     {
       title = "Volume out — bytes/sec per sink"
-      query = "SEARCH('{AWS/KinesisAnalytics,Application,Operator} MetricName=\"demoBytesOutPerSecond\" Application=\"${var.project}\"', 'Average')"
+      query = "SEARCH('{AWS/KinesisAnalytics,Application,Task} MetricName=\"demoBytesOutPerSecond\" Application=\"${var.project}\"', 'Average')"
     },
     {
       title = "Duplicates dropped"
-      query = "SEARCH('{AWS/KinesisAnalytics,Application,Operator} MetricName=\"demoDuplicatesDropped\" Application=\"${var.project}\"', 'Maximum')"
+      query = "SEARCH('{AWS/KinesisAnalytics,Application,Task} MetricName=\"demoDuplicatesDropped\" Application=\"${var.project}\"', 'Maximum')"
     },
     {
       title = "Busy time ms/sec (1000 = saturated)"

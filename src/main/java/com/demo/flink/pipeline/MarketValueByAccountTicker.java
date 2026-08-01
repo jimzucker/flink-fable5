@@ -1,5 +1,6 @@
 package com.demo.flink.pipeline;
 
+import com.demo.flink.common.DemoMetrics;
 import com.demo.flink.model.MarketValue;
 import com.demo.flink.model.Position;
 import com.demo.flink.model.PriceCents;
@@ -48,7 +49,7 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
                 new ValueStateDescriptor<>("last-price-time", Types.LONG));
         revalPending = getRuntimeContext().getState(
                 new ValueStateDescriptor<>("reval-pending", Types.BOOLEAN));
-        ticksConflated = getRuntimeContext().getMetricGroup().counter("demoTicksConflated");
+        ticksConflated = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoTicksConflated");
     }
 
     @Override

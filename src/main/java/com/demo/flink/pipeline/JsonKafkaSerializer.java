@@ -1,5 +1,6 @@
 package com.demo.flink.pipeline;
 
+import com.demo.flink.common.DemoMetrics;
 import com.demo.flink.common.JsonUtil;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
@@ -35,9 +36,9 @@ public class JsonKafkaSerializer<T> implements KafkaRecordSerializationSchema<T>
     @Override
     public void open(SerializationSchema.InitializationContext context, KafkaSinkContext sinkContext) {
         MetricGroup group = context.getMetricGroup();
-        recordsOut = group.counter("demoRecordsOut");
-        bytesOut = group.counter("demoBytesOut");
-        group.meter("demoBytesOutPerSecond", new MeterView(bytesOut));
+        recordsOut = DemoMetrics.counter(group, "demoRecordsOut");
+        bytesOut = DemoMetrics.counter(group, "demoBytesOut");
+        DemoMetrics.meter(group, "demoBytesOut", bytesOut);
     }
 
     @Override

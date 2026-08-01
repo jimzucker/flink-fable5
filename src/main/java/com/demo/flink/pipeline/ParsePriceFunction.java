@@ -1,5 +1,6 @@
 package com.demo.flink.pipeline;
 
+import com.demo.flink.common.DemoMetrics;
 import com.demo.flink.common.JsonUtil;
 import com.demo.flink.model.Price;
 import com.demo.flink.model.PriceCents;
@@ -22,9 +23,9 @@ public class ParsePriceFunction extends RichFlatMapFunction<String, PriceCents> 
     @Override
     public void open(OpenContext openContext) {
         MetricGroup group = getRuntimeContext().getMetricGroup();
-        bytesIn = group.counter("demoBytesIn");
-        group.meter("demoBytesInPerSecond", new MeterView(bytesIn));
-        malformed = group.counter("demoMalformed");
+        bytesIn = DemoMetrics.counter(group, "demoBytesIn");
+        DemoMetrics.meter(group, "demoBytesIn", bytesIn);
+        malformed = DemoMetrics.counter(group, "demoMalformed");
     }
 
     @Override

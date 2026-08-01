@@ -66,6 +66,12 @@ STEP 4 — CASE 2 (extreme price $10^13 at storm rates): PASS.
   price storm. All four AWS verdicts green: baseline parity, Case 1,
   storm, Case 2.
 
+CLOSING: all four AWS verdicts green (baseline parity, Case 1, storm,
+Case 2). Custom metrics fixed post-tests via DemoMetrics dual registration
+(kinesisanalytics group) — all 8 demo* metrics now in CloudWatch (2.3M+
+ticks conflated visible), dashboard fully populated. Stack left running at
+storm load for demo; teardown = terraform destroy (~$1/hr while up).
+
 DASHBOARD FIXES FOUND DURING THE RUN:
 - CloudWatch dashboard widgets searched dimension "Operator"; MSF publishes
   "Task"/"TaskOperator" — fixed in dashboard.tf, applied live.

@@ -1,5 +1,6 @@
 package com.demo.flink.pipeline;
 
+import com.demo.flink.common.DemoMetrics;
 import com.demo.flink.model.Trade;
 import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.common.state.StateTtlConfig;
@@ -27,7 +28,7 @@ public class DedupByTradeId extends KeyedProcessFunction<String, Trade, Trade> {
 
     @Override
     public void open(OpenContext openContext) {
-        duplicatesDropped = getRuntimeContext().getMetricGroup().counter("demoDuplicatesDropped");
+        duplicatesDropped = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoDuplicatesDropped");
         ValueStateDescriptor<Boolean> descriptor = new ValueStateDescriptor<>("seen-trade-id", Types.BOOLEAN);
         descriptor.enableTimeToLive(StateTtlConfig.newBuilder(Time.milliseconds(ttlMs))
                 .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)

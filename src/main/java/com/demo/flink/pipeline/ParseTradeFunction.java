@@ -1,5 +1,6 @@
 package com.demo.flink.pipeline;
 
+import com.demo.flink.common.DemoMetrics;
 import com.demo.flink.common.JsonUtil;
 import com.demo.flink.model.Trade;
 import org.apache.flink.api.common.functions.OpenContext;
@@ -20,9 +21,9 @@ public class ParseTradeFunction extends RichFlatMapFunction<String, Trade> {
     @Override
     public void open(OpenContext openContext) {
         MetricGroup group = getRuntimeContext().getMetricGroup();
-        bytesIn = group.counter("demoBytesIn");
-        group.meter("demoBytesInPerSecond", new MeterView(bytesIn));
-        malformed = group.counter("demoMalformed");
+        bytesIn = DemoMetrics.counter(group, "demoBytesIn");
+        DemoMetrics.meter(group, "demoBytesIn", bytesIn);
+        malformed = DemoMetrics.counter(group, "demoMalformed");
     }
 
     @Override

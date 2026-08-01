@@ -21,7 +21,7 @@ SERIES = [
     ("mv_account_out_per_sec", "numRecordsOutPerSecond", "mv_by_account_ticker", "Average", "sum"),
     ("busy_ms_per_sec_max", "busyTimeMsPerSecond", None, "Maximum", "max"),
     ("backpressure_ms_per_sec_max", "backPressuredTimeMsPerSecond", None, "Maximum", "max"),
-    ("ticks_conflated_total", "demoTicksConflated", "mv_by_account_ticker", "Maximum", "sum"),
+    ("ticks_conflated_total", "demoTicksConflated", None, "Maximum", "sum"),
     ("kpus", "KPUs", None, "Maximum", "max"),
 ]
 
