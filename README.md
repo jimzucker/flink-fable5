@@ -50,3 +50,11 @@ Custom metrics carry the `demo` prefix (`demoBytesInPerSecond`,
 `user_demoBytesOutPerSecond`, `demoDuplicatesDropped`, ...).
 
 Tail any output topic: `make tail TOPIC=mv-by-ticker`
+
+## Correctness
+
+- `make test` — 14 JUnit tests: operator harnesses + a hand-computed golden
+  end-to-end dataset (see [VALIDATION.md](VALIDATION.md))
+- `make validate` — recomputes all outputs independently from the raw Kafka
+  topics on the running stack and checks dedup, reproducibility, completeness
+  (Σ accounts == ticker) and exact market values
