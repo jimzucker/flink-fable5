@@ -1,0 +1,48 @@
+Phase 1 — Design & Plan (session 2026-08-01, Claude Code / Fable 5)
+====================================================================
+
+PROMPT 1
+--------
+"keep track of all prompts for this session so we can do a good linkedin article latter"
+
+RESPONSE (summary)
+Created a persistent session log (survives context compaction) and committed to
+appending every prompt/response exchange as the session continues.
+
+PROMPT 2
+--------
+"read the requirements and create a plan that we can review each outcome, the
+solutin should follow industry best practices"
+
+RESPONSE (summary)
+Read Requirements.txt (Flink demo: Kafka block trades + ticking prices in;
+positions and market values by account/ticker out; config-driven scaling,
+laptop + AWS, Grafana metrics, dedup, determinism, 1000 orders/sec validation).
+Wrote PLAN.md as the reviewable design doc (lifecycle step 1). Key points:
+
+- Stack: Java 17 + Flink DataStream API, Kafka, Docker Compose locally;
+  Amazon Managed Service for Apache Flink + MSK Serverless + Managed Grafana
+  on AWS via Terraform. Same jar everywhere; all knobs (rates, parallelism,
+  topics) via config/env — no rebuild.
+- Best practices: dedup via keyed state on trade_id with TTL + exactly-once
+  checkpointing; determinism via seeded generator, event-time semantics,
+  long-cents money math (no floating point); per-operator metrics (records
+  in/out, records/sec, KB/sec) -> Prometheus -> Grafana; RocksDB state backend
+  with incremental checkpoints.
+- Perf cases: positions are O(1) per-key running sums so 1000 orders/sec only
+  raises latency under backpressure; a huge price is fixed-width long
+  arithmetic on an isolated price path, so no impact on the order path.
+- Six phases, each ending in a team review: (1) design doc, (2) walking
+  skeleton end-to-end on laptop, (3) full calcs + Grafana dashboard,
+  (4) deterministic correctness test suite, (5) AWS deploy via Terraform,
+  (6) performance/scaling validation write-up.
+- Open questions: Java vs PyFlink/SQL; Managed Flink vs EKS; Kafka-only
+  outputs vs DB/S3 sink; Flink version (proposed 1.20.x).
+
+PROMPT 3
+--------
+"can we log the response above?"
+
+RESPONSE (summary)
+Added the response summary to the session log and switched the format to
+prompt/response pairs for the rest of the session.
