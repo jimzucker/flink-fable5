@@ -21,23 +21,13 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    GEN[Seeded generator<br/>rates & universe via config] -->|trades| T[(Kafka: trades)]
-    GEN -->|prices| P[(Kafka: prices)]
-    T --> PT[parse-trade] --> DD[dedup by trade_id<br/>keyed state + TTL]
-    P --> PP[parse-price<br/>exact long cents]
-    DD --> PA[position by<br/>account+ticker] & PB[position by ticker]
-    PA --> MVA[mv by account+ticker<br/>position x latest price]
-    PB --> MVB[mv by ticker]
-    PP --> MVA & MVB
-    PA & PB & MVA & MVB --> OUT[(4 Kafka output topics<br/>keyed upsert streams)]
-    OUT -.-> PROM[Prometheus] -.-> GRAF[Grafana<br/>12-panel dashboard]
-```
+*(click any image to view full size)*
+
+[![Architecture](docs/images/architecture.png)](docs/images/architecture.png)
 
 The real thing — the Flink job graph, running (7 operator chains, parallelism 2):
 
-![Flink job graph](docs/images/flink-job-graph.png)
+[![Flink job graph](docs/images/flink-job-graph.png)](docs/images/flink-job-graph.png)
 
 ## Quick start
 
@@ -93,7 +83,7 @@ plus duplicates dropped, malformed counts, checkpoint duration/size, busy vs
 backpressured time per task, and Kafka consumer lag. Grafana auto-provisions this
 dashboard (colors are CVD-validated and pinned per operator):
 
-![Grafana dashboard](docs/images/grafana-dashboard.png)
+[![Grafana dashboard](docs/images/grafana-dashboard.png)](docs/images/grafana-dashboard.png)
 
 Tail any topic: `make tail TOPIC=mv-by-ticker`
 
