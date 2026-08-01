@@ -86,3 +86,29 @@ Next per the plan: Phase 4 — the deterministic correctness suite (operator uni
 tests, duplicate-injection test, same-seed reproducibility, and the
 completeness check that per-account positions sum to the ticker position).
 Ready when you are — and worth opening the dashboard first to see it live.
+
+PROMPT 8
+--------
+"/btw lets change merges to master to fast forward squash merges and keep phase
+branches, lets re-build main with a clean merge from phase 2 branch adn them
+squash merge phasoe 3"
+
+RESPONSE (summary)
+Rebuilt main with linear history: reset main to the Requirements commit,
+fast-forwarded phase2-skeleton (single clean commit), squash-merged
+phase3-market-values into one commit, moved the Phase-2 and Phase-3 annotated
+tags onto the new commits, kept both phase branches. Workflow going forward:
+each phase branch is squash-merged into main (no merge commits), branches kept,
+milestone tagged Phase-<n>.
+
+PROMPT 9 (mid-turn)
+-------------------
+"did we record this in the phase 3 prompt file [full Phase 3 closing summary]"
+"alsways include prompt summary in files"
+
+RESPONSE (summary)
+The phase 3 file had only a condensed summary; appended the full verbatim
+closing summary and committed it on the phase branch before the squash, so it
+is part of the Phase-3 squash commit on main. New standing rule: every
+prompt/response exchange gets recorded in prompts/phase<n>_prompt.txt as the
+session progresses (summaries plus full closing summaries per phase).
