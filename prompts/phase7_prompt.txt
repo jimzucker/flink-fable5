@@ -130,3 +130,32 @@ PERF_RESULTS.md updated accordingly.
 
 Squash-merged phase7-price-conflation into main (branch kept), tagged
 Phase-7, pushed.
+
+FOLLOW-UP PROMPT
+----------------
+"yes update linkedin, if needed readme and ppt pointing this out"
+
+RESPONSE (summary)
+Updated all three deliverables with the Phase 7 story (commit 92e6e6d):
+
+- Article: new section "The best catch was human" — the review question,
+  the 517k records/sec saturation proof, the conflation fix, and the
+  division-of-labor takeaway (domain instinct from the human; proof, fix
+  and regression suite from the AI, in about an hour). Framing changed to
+  7 working prompts / 7 phases / 6 bugs + 1 design flaw; perf table gained
+  the price-storm row.
+- README: headline results row "Price storms can't stall orders" (240x
+  less work, zero backpressure); provenance updated to Phase-2..Phase-7
+  with the review-finding origin; test count corrected to 18.
+- Exec deck: seventh phase card ("Review find"), review-driven Case 3 line
+  on the load-test slide, stat tiles refreshed honestly: 7 prompts, ~$200
+  metered compute (recomputed from the actual session transcript), 6+1
+  findings.
+
+FOLLOW-UP PROMPT
+----------------
+"is summary above include in prompt file?"
+
+RESPONSE (summary)
+It was in the session log but not this file; appended both follow-up
+exchanges here and pushed.
