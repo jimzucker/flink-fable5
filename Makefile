@@ -1,4 +1,11 @@
-.PHONY: build up down logs positions status clean
+.PHONY: build up down logs positions status clean test validate
+
+test:
+	mvn test
+
+# Correctness validation against the running stack (pauses generator briefly)
+validate:
+	python3 scripts/validate_live.py
 
 build:
 	mvn -q -DskipTests package

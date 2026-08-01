@@ -1,0 +1,41 @@
+Phase 4 — Correctness Validation (session 2026-08-01, Claude Code / Fable 5)
+============================================================================
+
+PROMPT 10
+---------
+"proceed with phase 4"
+
+RESPONSE (summary)
+Built and ran the deterministic correctness suite on branch phase4-validation.
+
+Unit tests (14, all green via `make test`):
+- Flink operator test harnesses (KeyedOneInput / KeyedTwoInput) exercise the
+  real production operators, not reimplementations
+- DedupByTradeIdTest: duplicate injection — first occurrence wins, replays
+  with different payloads still dropped
+- Position/TickerPosition aggregators: hand-computed running sums,
+  cross-account accumulation
+- MarketValue joins: no MV emitted before a price arrives; a price tick
+  re-values every holder; extreme-price case 999,999 shares x $10^13
+  computed exactly with no overflow (perf Case 2 correctness)
+- GoldenPipelineTest: 6 fixed trades (1 duplicate) + 2 prices through the
+  real operator chain vs a fully hand-computed expected table, including the
+  completeness invariant (sum of account positions == ticker position) and a
+  determinism test (same input twice -> identical results)
+- JsonUtil malformed handling, AppConfig file+override semantics
+
+Live validation (`make validate`, scripts/validate_live.py):
+Pauses the generator, drains, dumps all six topics, independently recomputes
+every output from raw trades/prices in Python, compares exactly:
+  [PASS] dedup: 20,210 trade records, 959 duplicates, 19,251 distinct
+  [PASS] positions by account+ticker reproducible: 50 keys, all match
+  [PASS] positions by ticker reproducible: 10 tickers, all match
+  [PASS] completeness sum(accounts)==ticker: invariant holds
+  [PASS] MV by account == position x final price: 50 keys, exact Decimal
+  [PASS] MV by ticker == position x final price: 10 tickers, exact Decimal
+
+Also delivered: VALIDATION.md — the one-page "how we know the numbers are
+right" for the team review; surefire configured with --add-opens so the Flink
+1.20 harnesses run on modern JDKs (suite passed first try on JDK 25).
+
+Squash-merged phase4-validation into main (branch kept), tagged Phase-4.
