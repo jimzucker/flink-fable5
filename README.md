@@ -6,7 +6,7 @@ exact to the penny, deduplicated, fully observable, and load-tested. Runs on a l
 with one command; deploys to AWS with the **same jar** via Terraform.
 
 > Built in one day with [Claude Code](https://claude.com/claude-code) from a 25-line
-> requirements file. Six engineering prompts drove the whole build — all of them
+> requirements file. Eight engineering prompts drove the whole build — all of them
 > recorded in [`prompts/`](prompts/). The story: [docs/LINKEDIN_ARTICLE.md](docs/LINKEDIN_ARTICLE.md).
 
 ## Headline results
@@ -19,6 +19,7 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Provably correct** | 18 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
+| **Scaling proven on AWS** | P=2→4→8 = 16.5k→52k→97k msgs/s at saturation — config-only rescales, zero job restarts ([ladder](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 
@@ -165,8 +166,13 @@ explaining every number: [docs/PERF_RESULTS.md](docs/PERF_RESULTS.md)
 | backpressure / lag | 0 / 0 | 0 / 0 | 0 / 0 |
 | latency p50 | 100 ms | **96 ms** | 118 ms |
 
-Capacity at saturation: P=1 ≈ 7,000 rec/s → P=2 ≈ 14,300 (2.0×, linear) → P=4
-host-limited on an 8-core Docker VM.
+Capacity at saturation: locally P=1 ≈ 7,000 rec/s → P=2 ≈ 14,300 (2.0×,
+linear), P=4 host-limited. **On AWS (real KPUs): P=2 → 4 → 8 processed
+~16.5k → ~52k → ~97k msgs/s** under sustained overload — each rescale one
+tfvar, zero job restarts (MSF snapshots). Capacity model ≈ 12k msgs/s per
+KPU; the 110k/s mega-load is a ~P=10 dial, and the next efficiency lever
+(Avro instead of JSON) is identified and priced in
+([playbook](docs/PERF_RESULTS.md)).
 
 ## AWS
 
@@ -198,6 +204,7 @@ The project followed a phased plan ([PLAN.md](PLAN.md)), each phase ending in a
 review: design → walking skeleton → full calculations + dashboard → correctness
 suite → AWS IaC → load tests → price-storm conflation (a Phase 7 born from a
 review finding — the fan-out bottleneck was predicted by a human, then proven
-and fixed the same day). Git history mirrors it: one squash commit per phase,
+and fixed the same day) → AWS deployment + the measured scaling ladder
+(Phase 8). Git history mirrors it: one squash commit per phase,
 tagged `Phase-2`…`Phase-7`, with the detailed history preserved on the phase
 branches. Executive summary deck: [docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).

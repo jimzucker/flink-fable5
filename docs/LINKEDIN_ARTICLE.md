@@ -11,10 +11,11 @@ positions and market values from Kafka, deduplication, a Grafana dashboard,
 Terraform for AWS, and load-test results showing 1000 orders/sec with flat
 latency and measured linear scaling.
 
-Seven prompts did the engineering: one asking for a reviewable plan, five
-saying "proceed with phase N" — and one review comment that caught a real
-design flaw the clean architecture was hiding (more on that below; it's the
-best part). Everything else I typed that day was housekeeping — logging, git
+Eight prompts did the engineering: one asking for a reviewable plan, five
+saying "proceed with phase N", one review comment that caught a real design
+flaw the clean architecture was hiding (more on that below; it's the best
+part) — and one that took the whole thing to AWS and measured the scaling
+ladder. Everything else I typed that day was housekeeping — logging, git
 ceremony, a remote check. And because my very first (housekeeping) prompt was
 "keep track of all prompts for this session so we can do a good linkedin
 article latter" (typo preserved — they all are), every prompt is recorded in
@@ -78,6 +79,8 @@ All config-only changes, measured with Prometheus + per-record write latency:
 | Scaling P=1→2 | 7,000 → 14,300 rec/s — **2.0×, linear** |
 | Scaling P=2→4 | host-limited (28 subtasks on an 8-core Docker VM) — AWS is the fair test |
 | Price storm 10,000 ticks/s (post-fix) | order latency flat, 99.6% of ticks conflated, **240× less work** |
+| AWS (same jar, MSK + Managed Flink) | every case re-passed; storm at 17% busy on 2 KPUs |
+| AWS scaling ladder P=2→4→8 | **16.5k → 52k → 97k msgs/s** — config-only rescales, zero restarts |
 
 ## 5. The bugs are the best part
 
@@ -130,7 +133,22 @@ That's the division of labor in one anecdote: the domain instinct came from
 the human; the proof, the fix, and the regression suite came from the AI —
 in about an hour, as Phase 7.
 
-## 7. What I'd tell you about AI pair-building
+## 7. Then we turned the real dial
+
+The same day, the same jar went to AWS — MSK Serverless + Managed Service
+for Apache Flink, all Terraform. The deployment itself found five more
+gotchas (Java 11 runtimes, arm64 vs amd64 images, a stale-build trap, an
+AWS tag race, and the fact that Managed Flink silently drops custom metrics
+unless they're in a special metric group — all now in the repo's runbook).
+Then the question that matters: *can it handle the volume?* We offered the
+pipeline more than it could chew and turned one Terraform variable:
+parallelism 2 → 4 → 8 processed 16.5k → 52k → 97k messages/sec at
+saturation, with zero job restarts across rescales. Volume is a dial, the
+dial costs ~$0.12/hour per 12k msgs/sec, and the next 3-5× (binary
+serialization instead of JSON) is identified and priced before anyone
+needs it.
+
+## 8. What I'd tell you about AI pair-building
 
 - **Gate on outcomes, not output.** "Create a plan we can review each outcome"
   was the highest-leverage sentence of the day.
@@ -147,6 +165,6 @@ in about an hour, as Phase 7.
 The repo — requirements, plan, code, tests, Terraform, perf results, and every
 prompt — is here: **https://github.com/jimzucker/flink-fable5**.
 
-*Built with Claude Code (Fable 5). Total session: one day, 7 working prompts,
-7 phases, 6 bugs and 1 design flaw found and fixed, 0 floats harmed in the
-making of this pipeline.*
+*Built with Claude Code (Fable 5). Total session: one day, 8 working prompts,
+8 phases, 6 bugs + 1 design flaw + 8 deployment gotchas found and fixed,
+0 floats harmed in the making of this pipeline.*

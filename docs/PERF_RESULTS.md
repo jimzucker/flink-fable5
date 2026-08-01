@@ -182,6 +182,22 @@ to pass any case.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 
+## Capacity playbook (how to handle any volume)
+
+Measured capacity model: **~12k msgs/s per KPU** on this workload, linear to
+at least P=8. To sustain the 110k msgs/s mega-load with no lag:
+
+1. **Today, config-only:** `terraform apply -var flink_parallelism=12`
+   (~P=10 bare + 30% headroom; headroom is what re-drains after checkpoints,
+   deploys, bursts). Partitions (16) and MSK per-partition limits have margin.
+2. **Before scaling past ~P=16:** switch the wire format to Avro/Protobuf —
+   JSON parsing is the measured dominant cost; binary buys 3-5× per KPU
+   (110k/s on P=4-6).
+3. **To keep up permanently:** CloudWatch alarms on sustained backpressure /
+   growing pendingRecords / failed checkpoints; provisioned headroom over
+   reactive autoscaling for market-data burst patterns; unaligned checkpoints
+   under load; partitions to 32 before P>16; snapshots stay enabled.
+
 ## How to explain the numbers (demo script)
 
 1. Open Grafana → records/sec panel: parse_trade tracks the generator rate;
