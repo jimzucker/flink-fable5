@@ -47,6 +47,13 @@ public final class DataGenerator {
         long seed = params.getLong("generator.seed", 42L);
         double duplicateRatio = params.getDouble("generator.duplicate.ratio", 0.05);
         long priceCentsOverride = params.getLong("generator.price.cents.override", -1L);
+        // Trade ids are namespaced per run so a restarted generator produces NEW
+        // trades instead of replaying ids that dedup (correctly) absorbs.
+        // Pin it in config for fully reproducible runs.
+        String runId = params.get("generator.run.id", "-1");
+        if ("-1".equals(runId)) {
+            runId = Long.toString(System.currentTimeMillis() / 1000, 36);
+        }
 
         Random random = new Random(seed);
 
@@ -105,8 +112,8 @@ public final class DataGenerator {
         long lastReport = System.currentTimeMillis();
         Deque<String> recentTrades = new ArrayDeque<>();
 
-        System.out.printf("generator: %d trades/sec, %d prices/sec, %d accounts, %d tickers, seed=%d, dup=%.2f -> %s%n",
-                tradesPerSec, pricesPerSec, numAccounts, numTickers, seed, duplicateRatio, bootstrap);
+        System.out.printf("generator: %d trades/sec, %d prices/sec, %d accounts, %d tickers, seed=%d, dup=%.2f, run=%s -> %s%n",
+                tradesPerSec, pricesPerSec, numAccounts, numTickers, seed, duplicateRatio, runId, bootstrap);
 
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
             while (true) {
@@ -123,7 +130,7 @@ public final class DataGenerator {
                         tradeSeq++;
                         long qty = (long) (random.nextInt(200) + 1) * 10 * (random.nextBoolean() ? 1 : -1);
                         Trade trade = new Trade(
-                                String.format("T-%08d", tradeSeq),
+                                String.format("T-%s-%08d", runId, tradeSeq),
                                 accounts.get(random.nextInt(accounts.size())),
                                 tickers[random.nextInt(numTickers)],
                                 qty,

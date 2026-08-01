@@ -40,7 +40,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-trade/"
+              "options": "/^parse_trade/"
             },
             "properties": [
               {
@@ -55,7 +55,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-price/"
+              "options": "/^parse_price/"
             },
             "properties": [
               {
@@ -85,7 +85,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-account-ticker/"
+              "options": "/^position_by_account_ticker/"
             },
             "properties": [
               {
@@ -100,7 +100,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-ticker/"
+              "options": "/^position_by_ticker/"
             },
             "properties": [
               {
@@ -115,7 +115,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-account-ticker/"
+              "options": "/^mv_by_account_ticker/"
             },
             "properties": [
               {
@@ -130,7 +130,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-ticker/"
+              "options": "/^mv_by_ticker/"
             },
             "properties": [
               {
@@ -145,7 +145,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-account-ticker/"
+              "options": "/^sink_position_account_ticker/"
             },
             "properties": [
               {
@@ -160,7 +160,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-ticker/"
+              "options": "/^sink_position_ticker/"
             },
             "properties": [
               {
@@ -175,7 +175,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-account-ticker/"
+              "options": "/^sink_mv_account_ticker/"
             },
             "properties": [
               {
@@ -190,7 +190,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-ticker/"
+              "options": "/^sink_mv_ticker/"
             },
             "properties": [
               {
@@ -255,7 +255,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-trade/"
+              "options": "/^parse_trade/"
             },
             "properties": [
               {
@@ -270,7 +270,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-price/"
+              "options": "/^parse_price/"
             },
             "properties": [
               {
@@ -300,7 +300,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-account-ticker/"
+              "options": "/^position_by_account_ticker/"
             },
             "properties": [
               {
@@ -315,7 +315,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-ticker/"
+              "options": "/^position_by_ticker/"
             },
             "properties": [
               {
@@ -330,7 +330,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-account-ticker/"
+              "options": "/^mv_by_account_ticker/"
             },
             "properties": [
               {
@@ -345,7 +345,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-ticker/"
+              "options": "/^mv_by_ticker/"
             },
             "properties": [
               {
@@ -360,7 +360,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-account-ticker/"
+              "options": "/^sink_position_account_ticker/"
             },
             "properties": [
               {
@@ -375,7 +375,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-ticker/"
+              "options": "/^sink_position_ticker/"
             },
             "properties": [
               {
@@ -390,7 +390,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-account-ticker/"
+              "options": "/^sink_mv_account_ticker/"
             },
             "properties": [
               {
@@ -405,7 +405,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-ticker/"
+              "options": "/^sink_mv_ticker/"
             },
             "properties": [
               {
@@ -470,7 +470,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-trade/"
+              "options": "/^parse_trade/"
             },
             "properties": [
               {
@@ -485,7 +485,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-price/"
+              "options": "/^parse_price/"
             },
             "properties": [
               {
@@ -515,7 +515,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-account-ticker/"
+              "options": "/^position_by_account_ticker/"
             },
             "properties": [
               {
@@ -530,7 +530,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-ticker/"
+              "options": "/^position_by_ticker/"
             },
             "properties": [
               {
@@ -545,7 +545,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-account-ticker/"
+              "options": "/^mv_by_account_ticker/"
             },
             "properties": [
               {
@@ -560,7 +560,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-ticker/"
+              "options": "/^mv_by_ticker/"
             },
             "properties": [
               {
@@ -575,7 +575,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-account-ticker/"
+              "options": "/^sink_position_account_ticker/"
             },
             "properties": [
               {
@@ -590,7 +590,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-ticker/"
+              "options": "/^sink_position_ticker/"
             },
             "properties": [
               {
@@ -605,7 +605,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-account-ticker/"
+              "options": "/^sink_mv_account_ticker/"
             },
             "properties": [
               {
@@ -620,7 +620,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-ticker/"
+              "options": "/^sink_mv_ticker/"
             },
             "properties": [
               {
@@ -685,7 +685,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-trade/"
+              "options": "/^parse_trade/"
             },
             "properties": [
               {
@@ -700,7 +700,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^parse-price/"
+              "options": "/^parse_price/"
             },
             "properties": [
               {
@@ -730,7 +730,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-account-ticker/"
+              "options": "/^position_by_account_ticker/"
             },
             "properties": [
               {
@@ -745,7 +745,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^position-by-ticker/"
+              "options": "/^position_by_ticker/"
             },
             "properties": [
               {
@@ -760,7 +760,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-account-ticker/"
+              "options": "/^mv_by_account_ticker/"
             },
             "properties": [
               {
@@ -775,7 +775,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^mv-by-ticker/"
+              "options": "/^mv_by_ticker/"
             },
             "properties": [
               {
@@ -790,7 +790,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-account-ticker/"
+              "options": "/^sink_position_account_ticker/"
             },
             "properties": [
               {
@@ -805,7 +805,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-position-ticker/"
+              "options": "/^sink_position_ticker/"
             },
             "properties": [
               {
@@ -820,7 +820,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-account-ticker/"
+              "options": "/^sink_mv_account_ticker/"
             },
             "properties": [
               {
@@ -835,7 +835,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^sink-mv-ticker/"
+              "options": "/^sink_mv_ticker/"
             },
             "properties": [
               {
