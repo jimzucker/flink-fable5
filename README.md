@@ -28,10 +28,25 @@ affected container (`docker compose restart generator`, or resubmit the job). Kn
 generator rates, universe sizes, seed, duplicate ratio, price override (perf Case 2),
 pipeline parallelism, checkpoint interval, dedup TTL.
 
-## Current pipeline (Phase 2 skeleton)
+## Current pipeline (Phase 3)
 
 ```
-trades (Kafka) -> parse -> dedup(trade_id, TTL state) -> keyBy(account,ticker) running sum -> position-by-account-ticker (Kafka, keyed upsert stream)
+trades -> parse -> dedup(trade_id, TTL state) -+-> position by account+ticker -+-> Kafka
+                                               |                               +-> (x latest price) mv by account+ticker -> Kafka
+                                               +-> position by ticker         -+-> Kafka
+                                                                               +-> (x latest price) mv by ticker -> Kafka
+prices -> parse (exact long cents) ----------------> latest price per ticker (keyed co-process joins)
 ```
 
-The generator also produces the `prices` topic; market-value operators land in Phase 3.
+All money math is exact (long cents / BigDecimal) — no floating point, any price magnitude.
+
+## Observability
+
+Grafana auto-provisions the **"Flink Demo — Pipeline Observability"** dashboard
+(http://localhost:3000/d/flink-demo): records/sec and totals per operator, volume
+in/out in bytes/sec (KB/s) per parser and sink, duplicates dropped, malformed
+records, checkpoint duration/size, busy/backpressure time per task, Kafka lag.
+Custom metrics carry the `demo` prefix (`demoBytesInPerSecond`,
+`user_demoBytesOutPerSecond`, `demoDuplicatesDropped`, ...).
+
+Tail any output topic: `make tail TOPIC=mv-by-ticker`

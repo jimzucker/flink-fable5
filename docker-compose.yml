@@ -42,7 +42,7 @@ services:
       - bash
       - -c
       - |
-        for t in trades prices position-by-account-ticker; do
+        for t in trades prices position-by-account-ticker position-by-ticker mv-by-account-ticker mv-by-ticker; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic $$t --partitions 4 --replication-factor 1
         done
     restart: "no"
@@ -121,5 +121,6 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus

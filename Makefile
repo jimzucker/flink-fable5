@@ -19,6 +19,14 @@ positions:
 		--topic position-by-account-ticker \
 		--property print.key=true --from-beginning
 
+# Tail any topic: make tail TOPIC=mv-by-ticker
+TOPIC ?= mv-by-ticker
+tail:
+	docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+		--bootstrap-server localhost:9092 \
+		--topic $(TOPIC) \
+		--property print.key=true --from-beginning
+
 status:
 	curl -s http://localhost:8081/jobs/overview | python3 -m json.tool
 
