@@ -40,7 +40,7 @@ flowchart LR
     OUT -.-> PROM[Prometheus] -.-> GRAF[Grafana<br/>12-panel dashboard]
 ```
 
-Hard to read inline? **[Open full-screen in your browser](https://mermaid.live/view#pako:eNpdklFPwjAQx7_KZU8anEbjEzEkLCgPgiw4fZnEHO0NGrZ2aTuEAN_drhsE6FN7_d_vf7m7XcAUp6ALQZarP7ZEbWE0_ZHgzvD1I_0k4sRhQZI0WqVf5vqh525kACWHSoo1aUOwFghMyUwsZhCGvb3VyMnsIUlv3jFbYReayO3sxPa6UgtW6-KTrokcdUmtgjhJS3Q2oYd4BxgMUldZVcJ827B_BffVrWjrKjbWFQkdSJJRi4obVNyivI9PoA0yC7mSC2AkrWn1g0GT0E9LZYQVSjorn4CMqUrajhVsRfpKHp3L4UIS971k_N1Pi3X9ewny7FPyBvK6zbZpyJEQtYSoJVzy4yP_6h1d-E--3FSewfcbVGXLyoJVpWDmrH9VacjtgrGasDiNo_V3hObtrK4DVwp3gfC-bsx0Mk5jrQqyS6rMrIkOp_23dKgxQ4ne_fEpLFFSDhzNcq5Q81lwB0FBukDB3aLuApdf-JWVVLnJ58Hh8A9u7OAb)** · or view the [static PNG](docs/images/architecture.png)
+Hard to read inline? **[Open full-screen in your browser](https://mermaid.live/view#pako:eNpdklFPwjAQx7_KZU8anEbjEzEkLCgPgiw4fZnEHO0NGrZ2aTuEAN_drhsE6FN7_d_vf7m7XcAUp6ALQZarP7ZEbWE0_ZHgzvD1I_0k4sRhQZI0WqVf5vqh525kACWHSoo1aUOwFghMyUwsZhCGvb3VyMnsIUlv3jFbYReayO3sxPa6UgtW6-KTrokcdUmtgjhJS3Q2oYd4BxgMUldZVcJ827B_BffVrWjrKjbWFQkdSJJRi4obVNyivI9PoA0yC7mSC2AkrWn1g0GT0E9LZYQVSjorn4CMqUrajhVsRfpKHp3L4UIS971k_N1Pi3X9ewny7FPyBvK6zbZpyJEQtYSoJVzy4yP_6h1d-E--3FSewfcbVGXLyoJVpWDmrH9VacjtgrGasDiNo_V3hObtrK4DVwp3gfC-bsx0Mk5jrQqyS6rMrIkOp_23dKgxQ4ne_fEpLFFSDhzNcq5Q81lwB0FBukDB3aLuApdf-JWVVLnJ58Hh8A9u7OAb)**
 
 The real thing — the Flink job graph, running (7 operator chains, parallelism 2):
 *(click screenshots to view full size)*
