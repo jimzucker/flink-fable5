@@ -140,6 +140,20 @@ CloudWatch 1-min datapoint granularity + 4-min clean window) vs seconds
 locally with Prometheus — an observability-cadence difference, not a pipeline
 one.
 
+Mega-test (10× both axes: 10,000 trades/s + 100,000 prices/s, 50 accounts,
+generator upsized to 2 vCPU): the generator delivered the full 110k msgs/s;
+the pipeline's parse stage saturated at ~16.5k msgs/s ingest (busy 1000,
+backpressure ~980) — **the measured capacity of 2 KPUs**. Conflation held
+even under the 100k/s price flood (14.4M ticks absorbed; MV output stayed
+~9.4k/s instead of millions): the bottleneck moved to JSON parsing, which
+scales linearly with parallelism — 110k/s needs ~P=14-16, a KPU dial, not a
+redesign. Also answers the "window position emissions?" question: position
+output was never the pressure point at these rates.
+
+Ops lesson from the aftermath: with MSF snapshots disabled (this demo's
+config), any restart/rescale replays topics from earliest — enable snapshots
+in production so rescaling under backlog doesn't multiply the work.
+
 Capacity note: every AWS test above ran at parallelism 2 on 2 processing KPUs
 (1 vCPU / 4 GB each, `ParallelismPerKPU=1`, autoscaling off for determinism).
 Headroom at storm load was ~5× on the busiest task; the config-only rescale

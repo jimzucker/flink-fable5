@@ -45,8 +45,8 @@ resource "aws_ecs_task_definition" "generator" {
   family                   = "${var.project}-generator"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = var.generator_cpu
+  memory                   = var.generator_memory
   execution_role_arn       = aws_iam_role.generator_execution.arn
   task_role_arn            = aws_iam_role.generator_task.arn
 

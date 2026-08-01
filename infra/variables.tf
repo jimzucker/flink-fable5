@@ -68,3 +68,14 @@ variable "jar_path" {
   type        = string
   default     = "../target/flink-demo.jar"
 }
+
+variable "generator_cpu" {
+  description = "Fargate CPU units for the generator (256 = 0.25 vCPU)"
+  type        = number
+  default     = 256
+}
+
+variable "generator_memory" {
+  type    = number
+  default = 512
+}

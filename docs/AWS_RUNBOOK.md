@@ -106,6 +106,12 @@ cd infra && terraform destroy       # force_destroy on bucket/ECR handles conten
    `Task` level. CloudWatch metrics are 1-min granularity — expect ~7-8 min
    per load-test iteration vs seconds with local Prometheus.
 
+8. **Enable snapshots for production.** This demo runs with MSF snapshots
+   disabled (deterministic test runs); consequence: any restart or rescale
+   replays topics from earliest offsets. Under a large backlog that
+   multiplies the work — enable ApplicationSnapshotConfiguration before
+   relying on rescale-under-load.
+
 ## Cost note (rough, us-east-1)
 
 MSF ~2 KPU ≈ $0.22/hr; MSK Serverless ≈ $0.75/hr cluster + usage; NAT ≈
