@@ -1,7 +1,7 @@
 Phase 2 — Walking Skeleton (session 2026-08-01, Claude Code / Fable 5)
 ======================================================================
 
-PROMPT 4
+PROMPT 2
 --------
 "proceed with phase 2"
 
@@ -40,22 +40,3 @@ Verified:
 - Consumed real position snapshots from the output topic showing per-key
   accumulation (ACC-002|AAPL net_qty 20 -> 330)
 - Prometheus scraping JM+TM, 12 operator metric series live
-
-PROMPT 5
---------
-"did we record the summary"
-
-RESPONSE (summary)
-Confirmed the Phase 2 summary was recorded in the session log, including the
-debugging narrative and verified end-to-end results.
-
-PROMPT 6
---------
-"lets create a branch , include prompts/response, commit it then merge it to
-main and tag 'Phase 2' let put propmt responses in a subdir prompts and call
-the fiels phase<n>_prompt.txt as we progress (do not squash merge)"
-
-RESPONSE (summary)
-Created prompts/phase1_prompt.txt and prompts/phase2_prompt.txt, committed all
-Phase 1+2 work on branch phase2-skeleton, merged to main with a true merge
-commit (--no-ff, no squash), tagged Phase-2 (git tags cannot contain spaces).

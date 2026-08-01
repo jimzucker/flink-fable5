@@ -1,8 +1,8 @@
 Phase 6 — Performance & Scaling Validation, local (session 2026-08-01, Claude Code / Fable 5)
 =============================================================================================
 
-PROMPT 12
----------
+PROMPT 6
+--------
 "lets run phase 6 locally first"
 
 RESPONSE (summary)

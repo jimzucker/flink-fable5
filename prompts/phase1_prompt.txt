@@ -3,14 +3,6 @@ Phase 1 — Design & Plan (session 2026-08-01, Claude Code / Fable 5)
 
 PROMPT 1
 --------
-"keep track of all prompts for this session so we can do a good linkedin article latter"
-
-RESPONSE (summary)
-Created a persistent session log (survives context compaction) and committed to
-appending every prompt/response exchange as the session continues.
-
-PROMPT 2
---------
 "read the requirements and create a plan that we can review each outcome, the
 solutin should follow industry best practices"
 
@@ -38,11 +30,3 @@ Wrote PLAN.md as the reviewable design doc (lifecycle step 1). Key points:
   (6) performance/scaling validation write-up.
 - Open questions: Java vs PyFlink/SQL; Managed Flink vs EKS; Kafka-only
   outputs vs DB/S3 sink; Flink version (proposed 1.20.x).
-
-PROMPT 3
---------
-"can we log the response above?"
-
-RESPONSE (summary)
-Added the response summary to the session log and switched the format to
-prompt/response pairs for the rest of the session.

@@ -1,8 +1,8 @@
 Phase 4 — Correctness Validation (session 2026-08-01, Claude Code / Fable 5)
 ============================================================================
 
-PROMPT 10
----------
+PROMPT 4
+--------
 "proceed with phase 4"
 
 RESPONSE (summary)

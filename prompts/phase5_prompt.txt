@@ -1,8 +1,8 @@
 Phase 5 — AWS Deployment (session 2026-08-01, Claude Code / Fable 5)
 ====================================================================
 
-PROMPT 11
----------
+PROMPT 5
+--------
 "proceed with phase 5"
 
 RESPONSE (summary)
