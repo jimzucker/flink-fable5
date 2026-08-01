@@ -101,7 +101,7 @@ class GoldenPipelineTest {
 
         // --- market values from final positions + final prices ---
         var mvAccount = new KeyedTwoInputStreamOperatorTestHarness<String, Position, PriceCents, MarketValue>(
-                new KeyedCoProcessOperator<>(new MarketValueByAccountTicker()), p -> p.ticker, pc -> pc.symbol, Types.STRING);
+                new KeyedCoProcessOperator<>(new MarketValueByAccountTicker(0)), p -> p.ticker, pc -> pc.symbol, Types.STRING);
         mvAccount.open();
         for (Position p : accountAgg.extractOutputValues()) {
             mvAccount.processElement1(new StreamRecord<>(p));
@@ -120,7 +120,7 @@ class GoldenPipelineTest {
                 "ACC-001|MSFT", "-12307.50"), finalMvAccount);
 
         var mvTicker = new KeyedTwoInputStreamOperatorTestHarness<String, TickerPosition, PriceCents, MarketValue>(
-                new KeyedCoProcessOperator<>(new MarketValueByTicker()), p -> p.ticker, pc -> pc.symbol, Types.STRING);
+                new KeyedCoProcessOperator<>(new MarketValueByTicker(0)), p -> p.ticker, pc -> pc.symbol, Types.STRING);
         mvTicker.open();
         for (TickerPosition p : tickerAgg.extractOutputValues()) {
             mvTicker.processElement1(new StreamRecord<>(p));

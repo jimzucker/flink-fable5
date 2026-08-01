@@ -42,6 +42,7 @@ public final class PositionPipeline {
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
         long dedupTtlMs = params.getLong("dedup.state.ttl.ms", 3_600_000L);
+        long mvRevalIntervalMs = params.getLong("mv.reval.interval.ms", 250L);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         if (params.has("pipeline.parallelism")) {
@@ -99,7 +100,7 @@ public final class PositionPipeline {
         DataStream<MarketValue> mvByAccount = accountPositions
                 .keyBy(p -> p.ticker)
                 .connect(prices)
-                .process(new MarketValueByAccountTicker())
+                .process(new MarketValueByAccountTicker(mvRevalIntervalMs))
                 .name("mv-by-account-ticker").uid("mv-by-account-ticker");
 
         mvByAccount
@@ -111,7 +112,7 @@ public final class PositionPipeline {
         DataStream<MarketValue> mvByTicker = tickerPositions
                 .keyBy(p -> p.ticker)
                 .connect(prices)
-                .process(new MarketValueByTicker())
+                .process(new MarketValueByTicker(mvRevalIntervalMs))
                 .name("mv-by-ticker").uid("mv-by-ticker");
 
         mvByTicker

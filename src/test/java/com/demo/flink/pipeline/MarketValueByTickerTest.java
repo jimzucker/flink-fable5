@@ -20,7 +20,7 @@ class MarketValueByTickerTest {
     void latestPositionTimesLatestPrice() throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<String, TickerPosition, PriceCents, MarketValue> h =
                 new KeyedTwoInputStreamOperatorTestHarness<>(
-                        new KeyedCoProcessOperator<>(new MarketValueByTicker()),
+                        new KeyedCoProcessOperator<>(new MarketValueByTicker(0)),
                         p -> p.ticker,
                         pc -> pc.symbol,
                         Types.STRING);

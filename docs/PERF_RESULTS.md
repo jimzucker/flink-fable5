@@ -73,6 +73,38 @@ config-only rescale is expected to hold linearity — that's the Phase 6 AWS
 follow-up. Every rescale here was `pipeline.parallelism=N` + resubmit; the
 jar was untouched.
 
+## Phase 7 — Price-tick fan-out bottleneck: proven, then fixed by conflation
+
+**Theory (raised in review):** MV joins do O(holders) work per price tick, and
+MV backpressure propagates upstream through the shared position operator into
+the order path. Proven config-only at 50 accounts, trades constant at 1000/s:
+
+| price rate | MV emissions | busiest task | backpressure | order latency p50 |
+|---|---|---|---|---|
+| 20/s (baseline) | 1.9k/s | 4% | 0 | 54 ms |
+| 200/s (10×) | 11k/s | 9% | 0 | 42 ms |
+| 2,000/s (100×) | 101k/s | 33% | 0 | 73 ms (creeping) |
+| **10,000/s (500×)** | **517k/s** | **947 ms/s — saturated** | **526 ms/s sustained** | **91 ms, lag growing → unbounded** |
+
+**Fix: conflated re-valuation** (`mv.reval.interval.ms`, default 250 ms; 0 =
+per-tick). Position-driven MV stays immediate; price-driven re-valuation runs
+on a per-ticker processing-time timer at the latest price, absorbing
+intermediate ticks (`demoTicksConflated` metric). Same 500× storm after:
+
+| | per-tick | conflated 250 ms |
+|---|---|---|
+| prices absorbed | 9,131/s (falling behind) | **10,000/s flat** |
+| MV emissions | 452,928/s | 1,883/s (**240× less work**) |
+| busiest task | 947 ms/s | 404 ms/s |
+| backpressure / lag | 526 ms/s / growing | **0 / 0** |
+| order latency p50/p95 | 91/108 ms degrading | **95/97 ms stable** |
+
+99.6% of ticks conflated (>1.4M absorbed in minutes). Semantics unchanged:
+the full validation suite passed on the storm data (181k trades, 1.81M prices,
+500 position keys — dedup, reproducibility, completeness, exact MV all green),
+because final state is still position × latest price. Bound by construction:
+price-driven work ≤ holders × (1000/interval) per ticker/sec at any tick rate.
+
 ## How to explain the numbers (demo script)
 
 1. Open Grafana → records/sec panel: parse_trade tracks the generator rate;
