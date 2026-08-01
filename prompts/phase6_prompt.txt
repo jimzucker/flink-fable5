@@ -1,0 +1,51 @@
+Phase 6 — Performance & Scaling Validation, local (session 2026-08-01, Claude Code / Fable 5)
+=============================================================================================
+
+PROMPT 12
+---------
+"lets run phase 6 locally first"
+
+RESPONSE (summary)
+Ran the full performance validation locally on branch phase6-perf. Every load
+change was configuration only — the jar was never rebuilt for any test.
+Tools built: scripts/perf_probe.py (Prometheus sampling + true per-record
+write latency from Kafka CreateTime minus trade event_time) and
+scripts/scaling_test.py (capacity via backlog drain slope).
+
+Results (full tables in docs/PERF_RESULTS.md):
+- Baseline 10 trades/sec, P=2: busy 0.9% of a core, zero backpressure/lag,
+  e2e latency p50 100ms / p95 192ms
+- CASE 1 (1000 trades/sec, config only): sustained 1000/s, busy 5.2%, zero
+  backpressure, zero lag, latency p50 96ms / p95 98ms — UNCHANGED vs
+  baseline. Requirement met: 100x order rate, no performance impact.
+- CASE 2 (price pinned to $10^13 at 1000/s): throughput and busy identical
+  to Case 1, latency p50 118ms (within noise), and output digit-exact:
+  -230,140 x $10,000,000,000,000.00 = -2,301,400,000,000,000,000.00.
+  Requirement met: extreme price does not touch the order path.
+- SCALING (parallelism 1 -> 2 -> 4, config only, capacity = backlog drain
+  slope while busy ~980ms/s i.e. truly saturated):
+    P=1  ~7,000 rec/s   1.0x
+    P=2 ~14,300 rec/s   2.0x  <- linear
+    P=4 ~16,800 rec/s   2.4x  <- host ceiling: 28 subtasks + Kafka +
+                                  generator + monitoring on one 8-core
+                                  Docker VM; AWS KPUs are the real test
+
+Bugs found by doing this (the good stories):
+- Generator restarts silently produced ZERO new positions: same seed ->
+  same sequential trade ids -> dedup (correctly!) absorbed the entire
+  replay. Great idempotency demo, bad for load tests. Fix: trade ids are
+  namespaced by a generator.run.id (unique per run by default, pinnable in
+  config for reproducibility).
+- Prometheus sanitizes operator names (parse-trade -> parse_trade): probe
+  queries and the Grafana dashboard's per-entity color overrides were
+  matching nothing; fixed both against actual label values.
+- kafka-console-consumer --timeout-ms only fires when NO messages arrive —
+  on a busy stream it never exits; latency probe now caps with
+  --max-messages and measures write latency from record CreateTime instead
+  of consume time (no collection-window skew).
+
+Wrap-up: docs/PERF_RESULTS.md includes the "how to explain the numbers"
+demo script (dedup ratio, MV fan-out, busy as capacity gauge, backpressure+
+lag as the early-warning pair, price-magnitude-is-data-not-work).
+Stack restored to baseline (10/s, P=2) and re-verified running.
+Squash-merged phase6-perf into main (branch kept), tagged Phase-6.
