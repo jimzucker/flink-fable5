@@ -1,0 +1,88 @@
+Phase 3 — Full Calculations + Observability (session 2026-08-01, Claude Code / Fable 5)
+=======================================================================================
+
+PROMPT 7
+--------
+"proceed with phase 3"
+
+RESPONSE (summary)
+Extended the pipeline to all four required outputs and added full observability,
+verified live on the laptop stack.
+
+New calculations:
+- position-by-ticker: second keyed running sum over deduped trades
+- mv-by-account-ticker and mv-by-ticker: enrichment joins (KeyedCoProcessFunction
+  keyed by ticker) holding latest price in ValueState and positions in
+  Map/ValueState. A position update re-values that account; a price tick
+  re-values every holder of the ticker.
+- All money math exact: prices parsed to long cents, market value computed with
+  BigDecimal from long cents — no floating point, no overflow at any price
+  magnitude (perf Case 2 by construction).
+
+Observability (requirement: count output of all operators, rates, volume KB/sec):
+- Flink built-ins per operator (numRecordsIn/Out + PerSecond rates)
+- Custom metrics: demoBytesIn/PerSecond + demoMalformed on both parsers,
+  demoDuplicatesDropped on dedup, demoRecordsOut + demoBytesOut/PerSecond on
+  every Kafka sink serializer (real serialized bytes, key + value)
+- Provisioned Grafana dashboard (12 panels): records/sec + totals per operator,
+  volume in/out bytes/sec, duplicates dropped, malformed, records written,
+  checkpoint duration/size, busy + backpressured ms/sec per task, Kafka lag.
+- Dashboard colors: ran the palette validator from the dataviz skill; Grafana's
+  classic palette FAILED CVD checks (orange<->green ΔE 6.2), swapped to a
+  validated 8-slot palette, colors pinned per operator entity (a sink shares its
+  stream's hue).
+
+Gotcha found while verifying: metrics registered inside a Kafka sink serializer
+land under an extra `user_` scope (flink_..._operator_user_demoBytesOut...) —
+dashboard queries adjusted after checking Prometheus's actual metric names.
+
+Verified live:
+- All 7 operator chains RUNNING; 13,680 trades parsed -> 645 duplicates
+  dropped -> 13,035 applied to both position paths; MV joins consumed 40,395
+  position+price events
+- All four output topics flowing; exact math spot-checked
+  (11,660 x 209.79 = 2,446,151.40; -33,460 x 164.10 = -5,490,786.00)
+- Prometheus serving all custom metrics (~17.3 KB/s sink volume, 210,935
+  records written); Grafana dashboard live with 12 panels
+
+RESPONSE (full closing summary, verbatim)
+-----------------------------------------
+Phase 3 is complete, verified live, merged to main, and tagged Phase-3. Here's
+the review summary:
+
+All four required outputs are now flowing (sample any of them with
+make tail TOPIC=...):
+1. position-by-account-ticker and 2. position-by-ticker — running net quantity
+sums
+3. mv-by-account-ticker and 4. mv-by-ticker — enrichment joins keyed by ticker
+that hold the latest price in state; a position update re-values that account,
+and a price tick re-values every holder of the ticker. Money math is exact
+throughout (prices as long cents, market value via BigDecimal) — no floating
+point, no overflow at any price magnitude, which is what makes perf Case 2 safe
+by construction. Spot-checked: 11,660 x 209.79 = 2,446,151.40 [OK].
+
+Observability — the requirement to count output, rates, and KB/sec of all
+operators is met with Flink's built-in per-operator counters plus custom
+metrics: bytes-in/sec and malformed counts on both parsers, duplicates-dropped
+on dedup, and records + real serialized bytes/sec on every sink. The Grafana
+dashboard auto-provisions at http://localhost:3000/d/flink-demo with 12 panels:
+throughput per operator, volume in/out, duplicate/malformed/written stats,
+checkpoint duration/size, busy vs. backpressured time per task (this is what
+will explain latency in the 1000/sec test), and Kafka lag.
+
+Two things worth knowing from the build: Grafana's default color palette
+actually failed the colorblind-safety validation (orange<->green), so the
+dashboard uses a validated palette with colors pinned per operator entity; and
+Flink buries sink-serializer metrics under an extra user_ scope — the dashboard
+queries were corrected against Prometheus's real metric names, and all were
+confirmed returning data (~17.3 KB/s sink volume, 210k records written).
+
+Live verification: 13,680 trades parsed -> 645 duplicates dropped -> 13,035
+applied to both position paths, zero malformed, no exceptions. Git history
+shows the Phase-3 tag on a true merge commit, and prompts/phase3_prompt.txt is
+in the repo.
+
+Next per the plan: Phase 4 — the deterministic correctness suite (operator unit
+tests, duplicate-injection test, same-seed reproducibility, and the
+completeness check that per-account positions sum to the ticker position).
+Ready when you are — and worth opening the dashboard first to see it live.

@@ -7,6 +7,7 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
@@ -18,6 +19,7 @@ public class DedupByTradeId extends KeyedProcessFunction<String, Trade, Trade> {
 
     private final long ttlMs;
     private transient ValueState<Boolean> seen;
+    private transient Counter duplicatesDropped;
 
     public DedupByTradeId(long ttlMs) {
         this.ttlMs = ttlMs;
@@ -25,6 +27,7 @@ public class DedupByTradeId extends KeyedProcessFunction<String, Trade, Trade> {
 
     @Override
     public void open(OpenContext openContext) {
+        duplicatesDropped = getRuntimeContext().getMetricGroup().counter("demoDuplicatesDropped");
         ValueStateDescriptor<Boolean> descriptor = new ValueStateDescriptor<>("seen-trade-id", Types.BOOLEAN);
         descriptor.enableTimeToLive(StateTtlConfig.newBuilder(Time.milliseconds(ttlMs))
                 .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
@@ -38,6 +41,8 @@ public class DedupByTradeId extends KeyedProcessFunction<String, Trade, Trade> {
         if (seen.value() == null) {
             seen.update(true);
             out.collect(trade);
+        } else {
+            duplicatesDropped.inc();
         }
     }
 }

@@ -1,8 +1,10 @@
 package com.demo.flink.pipeline;
 
 import com.demo.flink.common.AppConfig;
-import com.demo.flink.common.JsonUtil;
+import com.demo.flink.model.MarketValue;
 import com.demo.flink.model.Position;
+import com.demo.flink.model.PriceCents;
+import com.demo.flink.model.TickerPosition;
 import com.demo.flink.model.Trade;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -12,17 +14,23 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Phase 2 walking skeleton:
- *   trades (Kafka) -> parse -> dedup(trade_id) -> position by account+ticker -> Kafka.
+ * Phase 3 pipeline — all four required outputs:
  *
- * Output is an idempotent per-key snapshot (upsert stream), so AT_LEAST_ONCE delivery
- * plus keyed partitioning gives correct end results without transactional consumers.
+ *   trades  -> parse -> dedup(trade_id) -+-> position by account+ticker -+-> Kafka
+ *                                        |                               +-> (join price) mv by account+ticker -> Kafka
+ *                                        +-> position by ticker         -+-> Kafka
+ *                                                                        +-> (join price) mv by ticker -> Kafka
+ *   prices  -> parse (exact long cents) -> latest price per ticker (in the joins)
+ *
+ * Outputs are idempotent per-key snapshots (upsert streams), so AT_LEAST_ONCE
+ * delivery plus keyed partitioning gives correct end results without
+ * transactional consumers.
  */
 public final class PositionPipeline {
 
@@ -32,8 +40,6 @@ public final class PositionPipeline {
         AppConfig params = AppConfig.load(args);
 
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
-        String tradesTopic = params.get("topic.trades", "trades");
-        String positionsTopic = params.get("topic.position.account.ticker", "position-by-account-ticker");
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
         long dedupTtlMs = params.getLong("dedup.state.ttl.ms", 3_600_000L);
 
@@ -43,50 +49,95 @@ public final class PositionPipeline {
         }
         env.enableCheckpointing(checkpointIntervalMs, CheckpointingMode.EXACTLY_ONCE);
 
-        KafkaSource<String> tradesSource = KafkaSource.<String>builder()
-                .setBootstrapServers(bootstrap)
-                .setTopics(tradesTopic)
-                .setGroupId(params.get("kafka.group.id", "flink-demo-positions"))
-                .setStartingOffsets(OffsetsInitializer.earliest())
-                .setValueOnlyDeserializer(new SimpleStringSchema())
-                .build();
-
+        // --- Sources ---
         DataStream<Trade> trades = env
-                .fromSource(tradesSource, WatermarkStrategy.noWatermarks(), "trades-source")
+                .fromSource(
+                        stringSource(params, params.get("topic.trades", "trades"), "flink-demo-trades"),
+                        WatermarkStrategy.noWatermarks(), "trades-source")
                 .uid("trades-source")
-                .flatMap((String json, Collector<Trade> out) -> {
-                    Trade trade = JsonUtil.fromJson(json, Trade.class);
-                    if (trade != null && trade.tradeId != null) {
-                        out.collect(trade);
-                    }
-                })
-                .returns(Trade.class)
-                .name("parse-trade")
-                .uid("parse-trade");
+                .flatMap(new ParseTradeFunction())
+                .name("parse-trade").uid("parse-trade");
 
+        KeyedStream<PriceCents, String> prices = env
+                .fromSource(
+                        stringSource(params, params.get("topic.prices", "prices"), "flink-demo-prices"),
+                        WatermarkStrategy.noWatermarks(), "prices-source")
+                .uid("prices-source")
+                .flatMap(new ParsePriceFunction())
+                .name("parse-price").uid("parse-price")
+                .keyBy(p -> p.symbol);
+
+        // --- Dedup ---
         DataStream<Trade> deduped = trades
                 .keyBy(t -> t.tradeId)
                 .process(new DedupByTradeId(dedupTtlMs))
-                .name("dedup-by-trade-id")
-                .uid("dedup-by-trade-id");
+                .name("dedup-by-trade-id").uid("dedup-by-trade-id");
 
-        DataStream<Position> positions = deduped
+        // --- Output 1: position by account+ticker ---
+        DataStream<Position> accountPositions = deduped
                 .keyBy(t -> t.account + "|" + t.ticker)
                 .process(new PositionAggregator())
-                .name("position-by-account-ticker")
-                .uid("position-by-account-ticker");
+                .name("position-by-account-ticker").uid("position-by-account-ticker");
 
-        KafkaSink<Position> positionSink = KafkaSink.<Position>builder()
+        accountPositions
+                .sinkTo(jsonSink(bootstrap, params.get("topic.position.account.ticker", "position-by-account-ticker"),
+                        (Position p) -> p.account + "|" + p.ticker))
+                .name("sink-position-account-ticker").uid("sink-position-account-ticker");
+
+        // --- Output 2: position by ticker ---
+        DataStream<TickerPosition> tickerPositions = deduped
+                .keyBy(t -> t.ticker)
+                .process(new TickerPositionAggregator())
+                .name("position-by-ticker").uid("position-by-ticker");
+
+        tickerPositions
+                .sinkTo(jsonSink(bootstrap, params.get("topic.position.ticker", "position-by-ticker"),
+                        (TickerPosition p) -> p.ticker))
+                .name("sink-position-ticker").uid("sink-position-ticker");
+
+        // --- Output 3: market value by account+ticker (position x latest price) ---
+        DataStream<MarketValue> mvByAccount = accountPositions
+                .keyBy(p -> p.ticker)
+                .connect(prices)
+                .process(new MarketValueByAccountTicker())
+                .name("mv-by-account-ticker").uid("mv-by-account-ticker");
+
+        mvByAccount
+                .sinkTo(jsonSink(bootstrap, params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
+                        (MarketValue mv) -> mv.account + "|" + mv.ticker))
+                .name("sink-mv-account-ticker").uid("sink-mv-account-ticker");
+
+        // --- Output 4: market value by ticker ---
+        DataStream<MarketValue> mvByTicker = tickerPositions
+                .keyBy(p -> p.ticker)
+                .connect(prices)
+                .process(new MarketValueByTicker())
+                .name("mv-by-ticker").uid("mv-by-ticker");
+
+        mvByTicker
+                .sinkTo(jsonSink(bootstrap, params.get("topic.mv.ticker", "mv-by-ticker"),
+                        (MarketValue mv) -> mv.ticker))
+                .name("sink-mv-ticker").uid("sink-mv-ticker");
+
+        LOG.info("Starting flink-demo pipeline against {}", bootstrap);
+        env.execute("flink-demo-positions");
+    }
+
+    private static KafkaSource<String> stringSource(AppConfig params, String topic, String defaultGroup) {
+        return KafkaSource.<String>builder()
+                .setBootstrapServers(params.get("kafka.bootstrap.servers", "localhost:29092"))
+                .setTopics(topic)
+                .setGroupId(params.get("kafka.group.id", defaultGroup) + "-" + topic)
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setValueOnlyDeserializer(new SimpleStringSchema())
+                .build();
+    }
+
+    private static <T> KafkaSink<T> jsonSink(String bootstrap, String topic, JsonKafkaSerializer.KeyFn<T> keyFn) {
+        return KafkaSink.<T>builder()
                 .setBootstrapServers(bootstrap)
-                .setRecordSerializer(new PositionKafkaSerializer(positionsTopic))
+                .setRecordSerializer(new JsonKafkaSerializer<>(topic, keyFn))
                 .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
                 .build();
-
-        positions.sinkTo(positionSink)
-                .name("position-account-ticker-sink")
-                .uid("position-account-ticker-sink");
-
-        LOG.info("Starting flink-demo positions pipeline against {}", bootstrap);
-        env.execute("flink-demo-positions");
     }
 }
