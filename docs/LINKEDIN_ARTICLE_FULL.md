@@ -191,6 +191,6 @@ prompt — is here: **https://github.com/jimzucker/flink-fable5**.
 
 *Built with Claude Code (Fable 5). The final tally: one day, 8 working
 prompts, 8 phases, 1,036 AI turns over 366M tokens (≈$484 metered — included
-in a flat subscription), ~$5 of AWS, 17 findings fixed (6 bugs, 1 design
-flaw, 8 deployment gotchas, 2 teardown lessons), 300M+ price ticks
-conflated, and 0 floats harmed in the making of this pipeline.*
+in a flat subscription), ~$5 of AWS, and 17 findings fixed (6 bugs, 1
+design flaw, 8 deployment gotchas, 2 teardown lessons). Every number
+traceable to a measurement in the repo.*

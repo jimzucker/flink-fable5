@@ -47,5 +47,6 @@ perf results, and all eight prompts.
 
 **github.com/jimzucker/flink-fable5**
 
-*One day. 8 prompts. 366M tokens (≈$484 metered, flat-rate in practice). $5
-of AWS. 300M price ticks conflated. 0 floats harmed.*
+*One day. 8 prompts. 366M tokens of AI (≈$484 metered — flat-rate in
+practice). $5 of AWS. Every number above traceable to a measurement in the
+repo.*
