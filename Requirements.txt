@@ -1,0 +1,24 @@
+As a developer I want to design and build a demo application that mocks inputs, builds a pipeline that scales linearly with CPU, saalign can be controlled via configuration and not require a new build.  It should run on a laptop and be deployable to AWS infrastructure.
+We should handle all best practices to include handlign duplicates, monitor performance, count outputof all operators, rated, volume in KB/sec.
+
+When we code a Flink pipeline we follow this development lifecycle
+1. Create a pipeline design and review with team
+2. Create a working application end to end and demo to team
+3. Application should run local or on AWS
+4. Demo should be on AWS with Grafana(or similar) metrics to explain behavior
+5. Validate calculation are correct with simple inputs, verify completeness, reproducibility of results. 
+6. Application behavior must be deterministic
+7. You must be able to explain the numbers and demo to team
+8. Verify application performs as expected with higher volumes
+	a. Case 1: Changing Speed of Order to say 1000/sec should not impact performance (latency will increase)
+	b. Case 2: Change price to very high # should not impact performance or latency of orders (ie 1000/sec)
+
+Input
+a. Kafa topic of block trades: trade-id/account/ticker/qty
+b. market data Ticking prices: symbol/price
+
+Outputs
+1. Position by account/ticker
+2. position by ticker
+3. calc market value by Account/ticker
+4. calc market value by ticker ticker
