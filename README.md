@@ -16,8 +16,9 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **1,000 orders/sec, latency unchanged** | p50 96 ms at 1000/s vs 100 ms at 10/s; ~5% CPU, zero backpressure ([results](docs/PERF_RESULTS.md)) |
 | **Extreme prices can't hurt the order path** | $10¹³ price at 1000/s: identical throughput, MV exact to 19 digits |
 | **Linear scaling, config-only** | parallelism 1→2 = 2.0× measured at saturation; rescale is one property |
-| **Provably correct** | 14 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
+| **Provably correct** | 18 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
+| **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 
@@ -141,7 +142,7 @@ Tail any topic: `make tail TOPIC=mv-by-ticker`
 ## Correctness
 
 ```bash
-make test        # 14 JUnit tests: real operators under Flink test harnesses,
+make test        # 18 JUnit tests: real operators under Flink test harnesses,
                  # incl. a hand-computed golden dataset and duplicate injection
 make validate    # pauses the generator, dumps all six topics, independently
                  # recomputes every output in Python, compares exactly:
@@ -193,8 +194,10 @@ PLAN.md / VALIDATION.md      the design doc and the correctness one-pager
 
 ## Provenance
 
-The project followed a six-phase plan ([PLAN.md](PLAN.md)), each phase ending in a
+The project followed a phased plan ([PLAN.md](PLAN.md)), each phase ending in a
 review: design → walking skeleton → full calculations + dashboard → correctness
-suite → AWS IaC → load tests. Git history mirrors it: one squash commit per phase,
-tagged `Phase-2`…`Phase-6`, with the detailed history preserved on the phase
+suite → AWS IaC → load tests → price-storm conflation (a Phase 7 born from a
+review finding — the fan-out bottleneck was predicted by a human, then proven
+and fixed the same day). Git history mirrors it: one squash commit per phase,
+tagged `Phase-2`…`Phase-7`, with the detailed history preserved on the phase
 branches. Executive summary deck: [docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).

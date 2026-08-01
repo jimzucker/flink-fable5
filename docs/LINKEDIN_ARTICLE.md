@@ -7,16 +7,18 @@
 Last Friday I sat down with a 25-line requirements file and Claude Code, and by
 the end of the day I had a deterministic Apache Flink trading pipeline: real-time
 positions and market values from Kafka, deduplication, a Grafana dashboard,
-14 passing tests, a validation suite that re-derives every output independently,
+18 passing tests, a validation suite that re-derives every output independently,
 Terraform for AWS, and load-test results showing 1000 orders/sec with flat
 latency and measured linear scaling.
 
-Six prompts did the engineering: one asking for a reviewable plan, and five
-saying "proceed with phase N." Everything else I typed that day was
-housekeeping — logging, git ceremony, a remote check. And because my very
-first (housekeeping) prompt was "keep track of all prompts for this session so
-we can do a good linkedin article latter" (typo preserved — they all are),
-every prompt is recorded in the repo under `prompts/`, phase by phase.
+Seven prompts did the engineering: one asking for a reviewable plan, five
+saying "proceed with phase N" — and one review comment that caught a real
+design flaw the clean architecture was hiding (more on that below; it's the
+best part). Everything else I typed that day was housekeeping — logging, git
+ceremony, a remote check. And because my very first (housekeeping) prompt was
+"keep track of all prompts for this session so we can do a good linkedin
+article latter" (typo preserved — they all are), every prompt is recorded in
+the repo under `prompts/`, phase by phase.
 
 Here's what I learned about working this way.
 
@@ -31,7 +33,8 @@ rationale, and **six phases that each end in something a team can review**:
 
 1. Design doc → 2. Walking skeleton on the laptop → 3. Full calculations +
 dashboard → 4. Correctness suite → 5. AWS via Terraform → 6. Performance
-validation
+validation — and a 7th phase nobody planned: a review finding (section 6)
+that got the same treatment: plan, prove, fix, verify.
 
 That structure did more for quality than any individual piece of code. Every
 "proceed with phase N" prompt had a defined finish line, and nothing moved
@@ -74,6 +77,7 @@ All config-only changes, measured with Prometheus + per-record write latency:
 | **Case 2: $10¹³ price @ 1000/s** | identical perf; MV digit-exact to 19 digits |
 | Scaling P=1→2 | 7,000 → 14,300 rec/s — **2.0×, linear** |
 | Scaling P=2→4 | host-limited (28 subtasks on an 8-core Docker VM) — AWS is the fair test |
+| Price storm 10,000 ticks/s (post-fix) | order latency flat, 99.6% of ticks conflated, **240× less work** |
 
 ## 5. The bugs are the best part
 
@@ -100,7 +104,33 @@ None of these were in the happy path. All of them would have bitten in
 production. The phase-gated "demo it before moving on" discipline is what
 surfaced them on day one instead.
 
-## 6. What I'd tell you about AI pair-building
+## 6. The best catch was human
+
+After six phases, the pipeline was "windowless by design" — every output a
+continuous per-event aggregation, and I'd been told that's what made it
+deterministic and fast. Then I asked the question any market-data person
+would ask: *prices can tick extremely fast — if you 10× the price rate,
+won't re-valuing every holder on every tick bottleneck?*
+
+It did. The AI turned my hunch into a config-only experiment: at 10,000
+ticks/sec the market-value join was emitting **517,000 records/sec**,
+saturated, with backpressure propagating through a shared operator into the
+order path — quietly breaking the very guarantee we'd demonstrated two
+phases earlier. The demo defaults (5 accounts, 20 ticks/sec) had hidden it
+completely.
+
+The fix was the one *deliberate* window in the system: conflated
+re-valuation. Position updates still emit instantly; price-driven
+re-valuation fires at most every 250 ms at the latest price. Same storm
+after: **240× less work, zero backpressure, flat order latency, 99.6% of
+ticks absorbed** — and the entire validation suite still passed, because
+final state is still position × latest price.
+
+That's the division of labor in one anecdote: the domain instinct came from
+the human; the proof, the fix, and the regression suite came from the AI —
+in about an hour, as Phase 7.
+
+## 7. What I'd tell you about AI pair-building
 
 - **Gate on outcomes, not output.** "Create a plan we can review each outcome"
   was the highest-leverage sentence of the day.
@@ -117,6 +147,6 @@ surfaced them on day one instead.
 The repo — requirements, plan, code, tests, Terraform, perf results, and every
 prompt — is here: **https://github.com/jimzucker/flink-fable5**.
 
-*Built with Claude Code (Fable 5). Total session: one day, 6 working prompts,
-6 phases, 6 bugs found and fixed, 0 floats harmed in the making of this
-pipeline.*
+*Built with Claude Code (Fable 5). Total session: one day, 7 working prompts,
+7 phases, 6 bugs and 1 design flaw found and fixed, 0 floats harmed in the
+making of this pipeline.*
