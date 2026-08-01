@@ -34,8 +34,9 @@ rationale, and **six phases that each end in something a team can review**:
 
 1. Design doc → 2. Walking skeleton on the laptop → 3. Full calculations +
 dashboard → 4. Correctness suite → 5. AWS via Terraform → 6. Performance
-validation — and a 7th phase nobody planned: a review finding (section 6)
-that got the same treatment: plan, prove, fix, verify.
+validation — plus a 7th phase nobody planned (a review finding, section 6,
+that got the same treatment: plan, prove, fix, verify) and an 8th that took
+it all to AWS (section 7).
 
 That structure did more for quality than any individual piece of code. Every
 "proceed with phase N" prompt had a defined finish line, and nothing moved
@@ -56,7 +57,7 @@ forward unverified.
 
 ## 3. Make the system prove itself
 
-Phase 4 was my favorite. Beyond 14 unit tests against the *real* operators
+Phase 4 was my favorite. Beyond the unit tests against the *real* operators (14 then, 18 by day's end)
 (including a hand-computed golden dataset), we wrote a validation script that
 pauses the generator, dumps all six Kafka topics, and **independently recomputes
 every output in Python** — dedup counts, both position rollups, the completeness
@@ -180,7 +181,7 @@ came to **about five dollars of AWS**.
   scaling — ask for the proof, not just the feature.
 - **Keep the receipts.** Prompts and responses live in the repo next to the
   code they produced. The git history (one squash commit per phase, tagged
-  Phase-2 through Phase-6) reads like a build log.
+  Phase-2 through Phase-7) reads like a build log.
 - **The AI catches its own mistakes if you make it look.** Every phase ended
   with the system running and measured — that loop, not the code generation,
   is where the quality came from.
