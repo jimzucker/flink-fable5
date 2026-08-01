@@ -146,7 +146,12 @@ pipeline more than it could chew and turned one Terraform variable:
 parallelism 2 → 4 → 8 processed 16.5k → 52k → 97k messages/sec at
 saturation, with zero job restarts across rescales — and the finale run at
 P=12 sustained the full 110k msgs/sec mega-load 1:1 with the sources,
-exactly where the capacity model said it would. Volume is a dial, the
+exactly where the capacity model said it would.
+
+One picture carries the whole argument — per-subtask throughput across the
+session: the overload rungs, the quiet drain, then the flat plateau of P=12
+holding 110k messages/sec steady (in the repo:
+`docs/images/aws-ladder-throughput.png` — upload it with this article). Volume is a dial, the
 dial costs ~$0.12/hour per 12k msgs/sec, and the next 3-5× (binary
 serialization instead of JSON) is identified and priced before anyone
 needs it.

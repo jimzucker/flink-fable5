@@ -166,6 +166,18 @@ explaining every number: [docs/PERF_RESULTS.md](docs/PERF_RESULTS.md)
 | backpressure / lag | 0 / 0 | 0 / 0 | 0 / 0 |
 | latency p50 | 100 ms | **96 ms** | 118 ms |
 
+The ladder, as measured on AWS (per-subtask throughput — overload rungs,
+drain, then P=12 sustaining the full 110k msgs/s; click to expand):
+
+[![AWS scaling ladder](docs/images/aws-ladder-throughput.png)](docs/images/aws-ladder-throughput.png)
+
+[![Saturation to headroom](docs/images/aws-busy-backpressure.png)](docs/images/aws-busy-backpressure.png)
+
+The live Flink cluster on Amazon Managed Service for Apache Flink during the
+finale — 84 tasks (7 operators × parallelism 12), all slots busy:
+
+[![AWS Flink UI](docs/images/aws-flink-ui.png)](docs/images/aws-flink-ui.png)
+
 Capacity at saturation: locally P=1 ≈ 7,000 rec/s → P=2 ≈ 14,300 (2.0×,
 linear), P=4 host-limited. **On AWS (real KPUs): P=2 → 4 → 8 processed
 ~16.5k → ~52k → ~97k msgs/s** under sustained overload — each rescale one

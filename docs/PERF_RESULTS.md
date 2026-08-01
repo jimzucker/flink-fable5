@@ -173,6 +173,9 @@ Residual intermittent backpressure (~200 ms/s) is a load-generator artifact
 (all 110k msgs burst at each second's start), not pipeline capacity; 300M+
 price ticks conflated cumulative.
 
+![The ladder as measured](images/aws-ladder-throughput.png)
+![Saturation to headroom](images/aws-busy-backpressure.png)
+
 Each rescale was `terraform apply -var flink_parallelism=N` — nothing else.
 With snapshots enabled every rescale resumed from offsets (fullRestarts: 0
 across the whole ladder; one checkpoint timeout under max backpressure,
