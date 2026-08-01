@@ -96,11 +96,17 @@ key is the current state).
 
 ## State & windows
 
-There are **no windows** — every output is a continuous per-key aggregation that
-updates on each event. That's what keeps the pipeline deterministic and O(1) per
-record: no window boundaries, no late-data policy, final state is just the
-commutative sum of deduped quantities × the latest price. All state lives in
-**RocksDB with incremental checkpoints** (interval config-driven, default 10s).
+Every output is a continuous per-key aggregation — no time windows on the order
+path, which stays deterministic and O(1) per record. The **one deliberate window**
+is a conflation interval on price-driven re-valuation (`mv.reval.interval.ms`,
+default 250 ms): a price tick would otherwise re-value every holder — O(holders)
+per tick — and a price storm's backpressure propagates through the shared
+position operator into the order path. Proven and fixed in Phase 7: at 10,000
+ticks/sec the per-tick design saturated (517k MV/s, sustained backpressure);
+conflated, the same storm runs at 404 ms/s busy, zero backpressure, flat order
+latency, 99.6% of ticks absorbed — final state still position × latest price
+(validation suite unchanged). All state lives in **RocksDB with incremental
+checkpoints** (interval config-driven, default 10s).
 
 | Operator | Keyed by | State | Bounded by |
 |---|---|---|---|
@@ -109,8 +115,8 @@ commutative sum of deduped quantities × the latest price. All state lives in
 | `dedup-by-trade-id` | trade_id | `ValueState<Boolean>` **with TTL** (`dedup.state.ttl.ms`, default 1h) | distinct trade ids within the TTL horizon — the only state that grows with throughput |
 | `position-by-account-ticker` | account\|ticker | `ValueState<Long>` net qty | one long per account×ticker |
 | `position-by-ticker` | ticker | `ValueState<Long>` net qty | one long per ticker |
-| `mv-by-account-ticker` | ticker | `MapState<account, qty>` + `ValueState<Long>` last price | accounts-per-ticker + one price per ticker |
-| `mv-by-ticker` | ticker | 2 × `ValueState<Long>` (qty, last price) | two longs per ticker |
+| `mv-by-account-ticker` | ticker | `MapState<account, qty>` + `ValueState` last price/time + reval-pending flag + conflation timer | accounts-per-ticker + O(1) per ticker |
+| `mv-by-ticker` | ticker | `ValueState` qty, last price/time + reval-pending flag + conflation timer | O(1) per ticker |
 | Kafka sinks | — | writer buffers only (AT_LEAST_ONCE, no transaction state) | — |
 
 Keying both join inputs by `ticker` co-locates the latest price with every position
