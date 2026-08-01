@@ -60,8 +60,11 @@ load that saturated the pre-conflation design locally): PASS.
   345x less work), busiest task ~17%, backpressure 0, lag 0.
   2 KPUs absorb the full 500x price storm with the conflation window.
 
-STEP 4 — CASE 2 (extreme price $10^13 at storm rates): results appended
-below.
+STEP 4 — CASE 2 (extreme price $10^13 at storm rates): PASS.
+  trades 1000.0/s, prices 10,001/s flat, dedup 950.5/s, MV 1,500/s,
+  busiest task ~13%, backpressure 0 — indistinguishable from the normal-
+  price storm. All four AWS verdicts green: baseline parity, Case 1,
+  storm, Case 2.
 
 DASHBOARD FIXES FOUND DURING THE RUN:
 - CloudWatch dashboard widgets searched dimension "Operator"; MSF publishes

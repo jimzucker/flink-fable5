@@ -128,6 +128,16 @@ design (sustained backpressure, unbounded lag) runs at ~17% busy on 2 KPUs
 with zero backpressure; conflation bounds MV work at 345× below the naive
 per-tick demand.
 
+Case 2 verdict: PASS on AWS — every price pinned to $10¹³ at full storm rates
+(1000 trades/s + 10,000 prices/s): metrics indistinguishable from the normal-
+price storm (busy ~13%, backpressure 0, all rates identical). Price magnitude
+is data, not work — confirmed on managed infrastructure.
+
+Measurement note: each AWS test step takes ~7–8 min (ECS config roll ~2 min +
+CloudWatch 1-min datapoint granularity + 4-min clean window) vs seconds
+locally with Prometheus — an observability-cadence difference, not a pipeline
+one.
+
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 
 ## How to explain the numbers (demo script)
