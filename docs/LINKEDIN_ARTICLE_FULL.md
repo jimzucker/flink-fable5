@@ -4,7 +4,7 @@
 
 ---
 
-Last Friday I sat down with a 25-line requirements file and Claude Code, and by
+Last Saturday I sat down with a 25-line requirements file and Claude Code, and by
 the end of the day I had a deterministic Apache Flink trading pipeline: real-time
 positions and market values from Kafka, deduplication, a Grafana dashboard,
 18 passing tests, a validation suite that re-derives every output independently,

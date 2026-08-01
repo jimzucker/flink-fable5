@@ -4,7 +4,7 @@
 
 ---
 
-Last Friday: a 25-line requirements file, Claude Code, and one day. By evening:
+Last Saturday: a 25-line requirements file, Claude Code, and one day. By evening:
 a deterministic Apache Flink pipeline turning Kafka trades and prices into
 live positions and market values — 18 tests, an independent validation suite,
 Terraform, and load tests passed on both my laptop and AWS.
@@ -39,11 +39,12 @@ an hour.
 capacity model predicted, at ~$0.12/hour per 12k msgs/sec. Then
 `terraform destroy`, verify the zeros. Total AWS bill: about $5.
 
-**The honest part:** 17 findings along the way — 6 bugs, 1 design flaw, 8
-deployment gotchas, 2 teardown lessons — every one caught by the
-verify-everything discipline before production would have found it for us.
-The repo is the full receipt: requirements, plan, code, tests, Terraform,
-perf results, and all eight prompts.
+**It wasn't flawless — that's the point.** Seventeen things went wrong
+during the day: 6 code bugs, 1 design flaw, 8 AWS deployment surprises,
+2 cleanup surprises. Every one was caught the same way — each phase had to
+run and be measured before we moved on. In production, those same problems
+would have been incidents. All of it is in the repo: the plan, the code,
+the tests, the results, and all eight prompts.
 
 **github.com/jimzucker/flink-fable5**
 
