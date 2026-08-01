@@ -48,7 +48,8 @@ the tests, the results, and all eight prompts.
 
 **github.com/jimzucker/flink-fable5**
 
-*One day — 5.7 active hours. 8 engineering prompts out of 83 messages.
-394M tokens of AI (≈$515 metered — flat-rate in practice). $5 of AWS.
-300M price updates absorbed by one well-placed window. Every number above
-traceable to a measurement in the repo.*
+*One day — 5.7 active hours, 2.6 of them me reviewing and steering.
+8 engineering prompts out of 83 messages. 394M tokens of AI (≈$515
+metered — flat-rate in practice). $5 of AWS. 300M price updates absorbed
+by one well-placed window. Every number above traceable to a measurement
+in the repo.*
