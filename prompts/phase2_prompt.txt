@@ -1,0 +1,61 @@
+Phase 2 — Walking Skeleton (session 2026-08-01, Claude Code / Fable 5)
+======================================================================
+
+PROMPT 4
+--------
+"proceed with phase 2"
+
+RESPONSE (summary)
+Built and verified the Phase 2 walking skeleton end to end on the laptop.
+Switched build tool to Maven (Gradle not installed; Maven is Flink standard),
+targeting Java 17 bytecode for the Flink 1.20 runtime.
+
+Delivered:
+- Shaded job jar (pipeline + seeded generator in one artifact)
+- config/application.properties driving every knob without rebuilds
+- Docker Compose stack: Kafka (KRaft), Flink JM+TM (RocksDB state backend,
+  incremental checkpoints, Prometheus metrics reporter), kafka-init topic
+  creation, one-shot job submitter, generator on plain JRE, Prometheus, Grafana
+- Makefile + README
+
+Pipeline: trades -> parse -> dedup(trade_id, TTL keyed state) ->
+keyBy(account,ticker) running sum -> keyed upsert stream to Kafka.
+
+Debugging along the way (the real story):
+- Added flink-connector-base (DeliveryGuarantee lives there, not in the
+  kafka connector)
+- Replaced Flink's ParameterTool with a dependency-free AppConfig so the
+  generator runs on a plain JRE container
+- Discovered the Flink 1.20 image already ships the Prometheus reporter as a
+  plugin (no copying from /opt needed)
+- Hit the classic Docker stale single-file bind-mount (Maven replaced the jar,
+  container kept the old inode) — fixed by mounting the target/ directory
+- Pinned jackson-core/annotations to match jackson-databind 2.17
+  (NoSuchMethodError: BufferRecycler.releaseToPool) — a transitive dependency
+  had dragged in an older jackson-core
+
+Verified:
+- Flink job RUNNING; operator counts: 930 trades parsed -> 39 duplicates
+  dropped by dedup -> 891 position updates emitted
+- Consumed real position snapshots from the output topic showing per-key
+  accumulation (ACC-002|AAPL net_qty 20 -> 330)
+- Prometheus scraping JM+TM, 12 operator metric series live
+
+PROMPT 5
+--------
+"did we record the summary"
+
+RESPONSE (summary)
+Confirmed the Phase 2 summary was recorded in the session log, including the
+debugging narrative and verified end-to-end results.
+
+PROMPT 6
+--------
+"lets create a branch , include prompts/response, commit it then merge it to
+main and tag 'Phase 2' let put propmt responses in a subdir prompts and call
+the fiels phase<n>_prompt.txt as we progress (do not squash merge)"
+
+RESPONSE (summary)
+Created prompts/phase1_prompt.txt and prompts/phase2_prompt.txt, committed all
+Phase 1+2 work on branch phase2-skeleton, merged to main with a true merge
+commit (--no-ff, no squash), tagged Phase-2 (git tags cannot contain spaces).
