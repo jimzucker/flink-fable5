@@ -113,15 +113,20 @@ Same jar, same config knobs as tfvars; measured with
 
 | | AWS baseline (10 t/s, 20 p/s) | Case 1 (1000 t/s) | Storm (10k p/s, 50 accts) |
 |---|---|---|---|
-| trades parsed | 10.0/s | **1000.0/s sustained** | *(appended when measured)* |
-| prices parsed | 20.0/s | 20.0/s | |
-| dedup out | 9.6/s | 950.4/s (5% dups) | |
-| MV emissions | ~53/s (conflated) | ~994/s | |
-| busiest task | 5 ms/s | **21.5 ms/s (2.2%)** | |
-| backpressure | 0 | **0** | |
+| trades parsed | 10.0/s | **1000.0/s sustained** | 1002/s sustained |
+| prices parsed | 20.0/s | 20.0/s | **10,002/s — full rate** |
+| dedup out | 9.6/s | 950.4/s (5% dups) | 953/s |
+| MV emissions | ~53/s (conflated) | ~994/s | **1,499/s** (pre-conflation: 517k/s) |
+| busiest task | 5 ms/s | **21.5 ms/s (2.2%)** | 178 ms/s (**~17%**) |
+| backpressure | 0 | **0** | **0** |
 
 Case 1 verdict: PASS on AWS — 100× the order rate at 2.2% busy on 2 KPUs
 (vs 5.2% on the laptop), zero backpressure. Same jar, tfvar-only change.
+
+Storm verdict: PASS on AWS — the exact load that saturated the pre-conflation
+design (sustained backpressure, unbounded lag) runs at ~17% busy on 2 KPUs
+with zero backpressure; conflation bounds MV work at 345× below the naive
+per-tick demand.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 

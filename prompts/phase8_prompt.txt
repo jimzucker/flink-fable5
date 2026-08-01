@@ -54,5 +54,21 @@ STEP 2 — CASE 1 (1000 trades/s, tfvar-only): PASS.
   on 2 KPUs.
 
 STEP 3 — STORM (1000 trades/s + 10,000 prices/s + 50 accounts, the exact
-load that saturated the pre-conflation design locally): results appended
+load that saturated the pre-conflation design locally): PASS.
+  prices absorbed 10,002/s flat (full rate), trades 1002/s sustained,
+  dedup 953/s, MV emissions 1,499/s (pre-conflation demand was 517k/s —
+  345x less work), busiest task ~17%, backpressure 0, lag 0.
+  2 KPUs absorb the full 500x price storm with the conflation window.
+
+STEP 4 — CASE 2 (extreme price $10^13 at storm rates): results appended
 below.
+
+DASHBOARD FIXES FOUND DURING THE RUN:
+- CloudWatch dashboard widgets searched dimension "Operator"; MSF publishes
+  "Task"/"TaskOperator" — fixed in dashboard.tf, applied live.
+- MSF only exports custom user metrics registered under a special
+  "kinesisanalytics" metric group — our plain Flink metrics (demo*) are
+  visible to Prometheus locally but silently dropped by MSF. Code fix
+  (dual registration) queued after the load tests so the app restart does
+  not corrupt measurement windows. Observability-integration trap #3 of
+  the day (after Prometheus name sanitization and the user_ scope).
