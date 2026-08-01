@@ -113,6 +113,8 @@ Same jar, same config knobs as tfvars; measured with
 
 | | AWS baseline (10 t/s, 20 p/s) | Case 1 (1000 t/s) | Storm (10k p/s, 50 accts) |
 |---|---|---|---|
+| operator parallelism | 2 | 2 | 2 |
+| KPUs (processing) | 2 (+1 orchestration billed) | 2 (+1) | 2 (+1) |
 | trades parsed | 10.0/s | **1000.0/s sustained** | 1002/s sustained |
 | prices parsed | 20.0/s | 20.0/s | **10,002/s — full rate** |
 | dedup out | 9.6/s | 950.4/s (5% dups) | 953/s |
@@ -137,6 +139,12 @@ Measurement note: each AWS test step takes ~7–8 min (ECS config roll ~2 min +
 CloudWatch 1-min datapoint granularity + 4-min clean window) vs seconds
 locally with Prometheus — an observability-cadence difference, not a pipeline
 one.
+
+Capacity note: every AWS test above ran at parallelism 2 on 2 processing KPUs
+(1 vCPU / 4 GB each, `ParallelismPerKPU=1`, autoscaling off for determinism).
+Headroom at storm load was ~5× on the busiest task; the config-only rescale
+path (`terraform apply -var flink_parallelism=4`) is proven but was not needed
+to pass any case.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 
