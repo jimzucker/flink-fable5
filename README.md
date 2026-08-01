@@ -94,6 +94,33 @@ key is the current state).
   generator rates, universe, seed, duplicate ratio, price override, parallelism,
   checkpoint interval, dedup TTL. No behavior change requires a rebuild.
 
+## State & windows
+
+There are **no windows** — every output is a continuous per-key aggregation that
+updates on each event. That's what keeps the pipeline deterministic and O(1) per
+record: no window boundaries, no late-data policy, final state is just the
+commutative sum of deduped quantities × the latest price. All state lives in
+**RocksDB with incremental checkpoints** (interval config-driven, default 10s).
+
+| Operator | Keyed by | State | Bounded by |
+|---|---|---|---|
+| Kafka sources | — | partition offsets | # partitions |
+| `parse-trade` / `parse-price` | — | stateless | — |
+| `dedup-by-trade-id` | trade_id | `ValueState<Boolean>` **with TTL** (`dedup.state.ttl.ms`, default 1h) | distinct trade ids within the TTL horizon — the only state that grows with throughput |
+| `position-by-account-ticker` | account\|ticker | `ValueState<Long>` net qty | one long per account×ticker |
+| `position-by-ticker` | ticker | `ValueState<Long>` net qty | one long per ticker |
+| `mv-by-account-ticker` | ticker | `MapState<account, qty>` + `ValueState<Long>` last price | accounts-per-ticker + one price per ticker |
+| `mv-by-ticker` | ticker | 2 × `ValueState<Long>` (qty, last price) | two longs per ticker |
+| Kafka sinks | — | writer buffers only (AT_LEAST_ONCE, no transaction state) | — |
+
+Keying both join inputs by `ticker` co-locates the latest price with every position
+for that ticker — a price tick re-values all holders with no shuffle. The closest
+things to a "window" in the system: the dedup TTL (bounded replay-detection
+horizon), the checkpoint interval (fault tolerance, not semantics), and the 60s
+meter window on rate metrics (reporting only). Time-bucketed outputs (per-minute
+snapshots, OHLC) are the natural extension point where real windows and watermarks
+would enter.
+
 ## Observability
 
 Every operator reports records in/out, rates, and real serialized **bytes/sec**;
