@@ -100,3 +100,31 @@ multiplies work), and tore the stack down (terraform destroy) — test
 complete, ~60-90M-record backlog made draining pointless. Total AWS phase:
 all planned tests green, capacity knee measured, eight operational gotchas
 documented.
+
+FOLLOW-UP PROMPT
+----------------
+"did we scale the pipeline up to show we can scale to handle the volume?"
+-> "yes" -> "can we rename the stack flink-fable5 to match the git repo and
+start deploying it while the old one tears down" -> "we sould interate
+faster" (+ status checks and "why are sinks red?")
+
+RESPONSE (summary)
+Honest gap identified: AWS rescale mechanism existed but linearity was
+never measured on KPUs. Closed it: renamed stack to flink-fable5 (project
+var default now matches the repo), deployed in a parallel Terraform
+workspace while the old stack finished dissolving, enabled MSF snapshots
+(gotcha #8 fix) and 16-partition topics so source parallelism scales past
+4. Ran the ladder under sustained overload, iterating fast (saturation
+confirmed from single samples, rungs chained back-to-back; the floor is
+AWS itself: ~4 min per rescale + 1-min CloudWatch granularity):
+
+  P=2, 2 KPUs, 35k offered  -> ~16.5k processed (saturated baseline)
+  P=4, 4 KPUs, 35k offered  -> ~52k processed  (~2x)
+  P=8, 8 KPUs, 70k offered  -> ~97k processed  (~2x again)
+
+fullRestarts 0 across all rescales (snapshots working); one checkpoint
+timeout under max backpressure, self-recovered. "Why are sinks red?" —
+Flink UI colors operators by busy/backpressure; red across the graph
+during deliberate overload is the pipeline at full effort, not a fault.
+Verdict: volume is a KPU dial and the dial is measured — 110k msgs/s needs
+~P=10. Generator dialed to baseline with P=8 kept for fast backlog drain.

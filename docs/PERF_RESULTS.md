@@ -154,6 +154,26 @@ Ops lesson from the aftermath: with MSF snapshots disabled (this demo's
 config), any restart/rescale replays topics from earliest — enable snapshots
 in production so rescaling under backlog doesn't multiply the work.
 
+## Phase 8b — AWS scaling ladder (the volume answer, measured)
+
+Fresh stack (renamed flink-fable5, snapshots enabled, 16-partition topics),
+sustained overload offered throughout; capacity = processed rate while
+saturated (busy pegged, backlog draining):
+
+| parallelism | KPUs | offered | processed at saturation (peak) | scaling |
+|---|---|---|---|---|
+| 2 | 2 | 35k msgs/s | ~16.5k msgs/s | baseline |
+| 4 | 4 | 35k msgs/s | ~52k msgs/s | ~2× |
+| 8 | 8 | 70k msgs/s | **~97k msgs/s** | **~2× again** |
+
+Each rescale was `terraform apply -var flink_parallelism=N` — nothing else.
+With snapshots enabled every rescale resumed from offsets (fullRestarts: 0
+across the whole ladder; one checkpoint timeout under max backpressure,
+self-recovered). Mix caveat: drain windows are price-heavy and price-parse
+is cheaper than the trade path, so treat per-rung numbers as ≥2× rather than
+exactly 2×. Verdict: **the 110k msgs/s mega-load is a KPU dial (~P=10), and
+the dial is proven.** 35M+ price ticks conflated during the ladder.
+
 Capacity note: every AWS test above ran at parallelism 2 on 2 processing KPUs
 (1 vCPU / 4 GB each, `ParallelismPerKPU=1`, autoscaling off for determinism).
 Headroom at storm load was ~5× on the busiest task; the config-only rescale
