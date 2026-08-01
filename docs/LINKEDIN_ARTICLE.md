@@ -156,7 +156,22 @@ dial costs ~$0.12/hour per 12k msgs/sec, and the next 3-5× (binary
 serialization instead of JSON) is identified and priced before anyone
 needs it.
 
-## 8. What I'd tell you about AI pair-building
+## 8. Leave the campsite clean
+
+The session ended the way production work should: `terraform destroy`,
+then *verify the zeros* — MSK clusters 0, Flink apps 0, ECS/ECR/S3/NAT 0,
+non-default VPCs 0, both Terraform states empty. Even teardown taught two
+lessons: Managed Flink's orphaned network interfaces block VPC deletion for
+half an hour after the app is gone (delete them by hand or wait), and my
+cleanup automation achieved a moment of comedy by deadlocking on a process
+check that matched *its own command text*. The last bug of the day was the
+script watching for itself.
+
+The bill for the entire cloud adventure — two full stack lifecycles, five
+load tests, a four-rung scaling ladder, and the 110k msgs/sec finale —
+came to **about five dollars of AWS**.
+
+## 9. What I'd tell you about AI pair-building
 
 - **Gate on outcomes, not output.** "Create a plan we can review each outcome"
   was the highest-leverage sentence of the day.
@@ -173,6 +188,8 @@ needs it.
 The repo — requirements, plan, code, tests, Terraform, perf results, and every
 prompt — is here: **https://github.com/jimzucker/flink-fable5**.
 
-*Built with Claude Code (Fable 5). Total session: one day, 8 working prompts,
-8 phases, 6 bugs + 1 design flaw + 8 deployment gotchas found and fixed,
-0 floats harmed in the making of this pipeline.*
+*Built with Claude Code (Fable 5). The final tally: one day, 8 working
+prompts, 8 phases, 1,036 AI turns over 366M tokens (≈$484 metered — included
+in a flat subscription), ~$5 of AWS, 17 findings fixed (6 bugs, 1 design
+flaw, 8 deployment gotchas, 2 teardown lessons), 300M+ price ticks
+conflated, and 0 floats harmed in the making of this pipeline.*
