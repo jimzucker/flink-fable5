@@ -1,0 +1,43 @@
+Phase 7 — Price-Tick Fan-Out & Conflation (session 2026-08-01, Claude Code / Fable 5)
+=====================================================================================
+
+PROMPT 7
+--------
+"regarding windowing, consider prices can be an extremely high rate, if you in
+crease prices by 10x you will see we will bottle neck if we update market value
+for every pricee tick create a plan to test the theory and fix it, record this
+prompt and followup like we did the first one"
+
+RESPONSE (summary)
+Agreed — this is the real scaling flaw in the current design, spotted in
+review. Every price tick does O(holders) work in the MV joins, and Flink
+backpressure from the MV operator propagates upstream through the SHARED
+position operator into the order path: a price storm can slow trades,
+violating the Case-1 guarantee. The "no windows" purity becomes a liability
+exactly here.
+
+Wrote the Phase 7 plan into PLAN.md (review-gated, same lifecycle as before):
+
+Step 1 — Prove it, config-only: raise accounts to 50 (realistic fan-out),
+hold trades at 1000/s, storm prices at 10x (200/s) and 100x (2,000/s);
+measure MV emission rate, MV busy time, backpressure, and the key number —
+order-path latency. Find the knee.
+
+Step 2 — Fix with a deliberate window: conflated re-valuation.
+Position-driven MV stays immediate (order path never waits). Price-driven
+re-valuation moves to a per-ticker processing-time timer firing every
+mv.reval.interval.ms (config; 0 = today's per-tick behavior): store latest
+price, re-value holders once per interval with the freshest price,
+absorbing intermediate ticks. Bounds price-driven work at
+holders x (1000/interval) per ticker/sec regardless of tick rate. Final
+state after quiesce is still position x latest price, so the validation
+suite must pass unchanged. New demoTicksConflated metric proves it live.
+
+Step 3 — Verify: harness tests with controlled processing time (N ticks ->
+one emission at last price; interval=0 identical to old behavior), re-run
+the storms expecting flat order latency and bounded MV output at 100x
+prices, full make test + make validate green, results appended to
+PERF_RESULTS.md.
+
+(Follow-up exchanges for this phase are appended below as the work
+proceeds, per the established pattern.)

@@ -101,6 +101,48 @@ Mirrors the team lifecycle in Requirements.txt. **We stop for review at the end 
 
 ---
 
+## Phase 7 — Price-tick fan-out: prove the bottleneck, then conflate
+
+**Theory (raised in review):** the MV joins emit one record per *holder* on every
+price tick — O(holders) work per tick. MV work/sec = prices/sec × avg holders per
+ticker. Worse, backpressure from the MV operator propagates upstream through the
+**shared position operator** into the order path — so a price storm can slow
+trades, violating the Case-1 guarantee. At 10×+ price rates with realistic
+holder counts this must bottleneck.
+
+### Step 1 — Prove it (config-only stress test)
+1. Make fan-out realistic: `generator.accounts=50` (each tick re-values ~50
+   holders at account level)
+2. Baseline probe, then price storms at 10× (200/s) and 100× (2,000/s) —
+   trades held constant at 1000/s
+3. Measure: MV emission rate, MV-operator busy time, backpressure, and — the
+   key number — **order-path latency** (trade → position output)
+4. Find the knee: the price rate where busy → 1000 ms/s and order latency rises
+
+### Step 2 — Fix: conflated re-valuation (a real window, used deliberately)
+- **Position-driven MV stays immediate** — the order path never waits
+- **Price-driven re-valuation conflates**: store the latest price per ticker;
+  a per-key processing-time timer fires every `mv.reval.interval.ms` (config,
+  e.g. 250 ms; `0` = today's per-tick behavior) and re-values holders **once**
+  with the latest price — intermediate ticks are absorbed
+- Bounds price-driven work at holders × (1000/interval) per ticker/sec,
+  independent of tick rate
+- Semantics preserved: after quiesce, final MV = position × latest price, so
+  the whole validation suite must still pass unchanged
+- New metric `demoTicksConflated` proves the mechanism on the dashboard
+
+### Step 3 — Verify the fix
+1. Unit tests: harness with controlled processing time — N ticks in one
+   interval → exactly one re-valuation at the last price; position updates
+   still emit immediately; interval=0 behaves exactly as before
+2. Re-run the Step-1 storms: expect flat order-path latency, bounded MV
+   output, zero sustained backpressure at 100× prices
+3. `make test` and `make validate` all green (final-state semantics unchanged)
+4. Results appended to docs/PERF_RESULTS.md; README state/window section updated
+
+**Review gate:** stress-test numbers before the fix, then after — same probes,
+same configs.
+
 ## 4. Open questions for review
 1. Java/DataStream is proposed — any preference for PyFlink or Flink SQL instead?
 2. AWS target: Managed Service for Apache Flink (proposed) vs. self-managed on EKS?
