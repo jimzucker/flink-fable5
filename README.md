@@ -21,11 +21,29 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 
 ## Architecture
 
-*(click any image to view full size)*
+```mermaid
+flowchart LR
+    GEN[Seeded generator<br/>rates and universe via config] -->|trades| T[(Kafka: trades)]
+    GEN -->|prices| P[(Kafka: prices)]
+    T --> PT[parse-trade] --> DD[dedup by trade_id<br/>keyed state + TTL]
+    P --> PP[parse-price<br/>exact long cents]
+    DD --> PA[position by<br/>account+ticker]
+    DD --> PB[position by ticker]
+    PA --> MVA[mv by account+ticker<br/>position x latest price]
+    PB --> MVB[mv by ticker]
+    PP --> MVA
+    PP --> MVB
+    PA --> OUT[(4 Kafka output topics<br/>keyed upsert streams)]
+    PB --> OUT
+    MVA --> OUT
+    MVB --> OUT
+    OUT -.-> PROM[Prometheus] -.-> GRAF[Grafana<br/>12-panel dashboard]
+```
 
-[![Architecture](docs/images/architecture.png)](docs/images/architecture.png)
+Hard to read inline? **[Open full-screen in your browser](https://mermaid.live/view#pako:eNpdklFPwjAQx7_KZU8anEbjEzEkLCgPgiw4fZnEHO0NGrZ2aTuEAN_drhsE6FN7_d_vf7m7XcAUp6ALQZarP7ZEbWE0_ZHgzvD1I_0k4sRhQZI0WqVf5vqh525kACWHSoo1aUOwFghMyUwsZhCGvb3VyMnsIUlv3jFbYReayO3sxPa6UgtW6-KTrokcdUmtgjhJS3Q2oYd4BxgMUldZVcJ827B_BffVrWjrKjbWFQkdSJJRi4obVNyivI9PoA0yC7mSC2AkrWn1g0GT0E9LZYQVSjorn4CMqUrajhVsRfpKHp3L4UIS971k_N1Pi3X9ewny7FPyBvK6zbZpyJEQtYSoJVzy4yP_6h1d-E--3FSewfcbVGXLyoJVpWDmrH9VacjtgrGasDiNo_V3hObtrK4DVwp3gfC-bsx0Mk5jrQqyS6rMrIkOp_23dKgxQ4ne_fEpLFFSDhzNcq5Q81lwB0FBukDB3aLuApdf-JWVVLnJ58Hh8A9u7OAb)** · or view the [static PNG](docs/images/architecture.png)
 
 The real thing — the Flink job graph, running (7 operator chains, parallelism 2):
+*(click screenshots to view full size)*
 
 [![Flink job graph](docs/images/flink-job-graph.png)](docs/images/flink-job-graph.png)
 
