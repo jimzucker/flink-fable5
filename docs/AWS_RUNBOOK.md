@@ -24,7 +24,7 @@ make -C .. aws-push-generator REGION=$(terraform output -raw msk_bootstrap_broke
 # or simply: make aws-push-generator REGION=us-east-1
 
 # 4. restart the service so it picks the image
-aws ecs update-service --cluster flink-demo --service flink-demo-generator --force-new-deployment
+aws ecs update-service --cluster flink-fable5 --service flink-fable5-generator --force-new-deployment
 
 # 5. watch
 terraform output cloudwatch_dashboard_url
@@ -92,7 +92,7 @@ cd infra && terraform destroy       # force_destroy on bucket/ECR handles conten
    `terraform import aws_kinesisanalyticsv2_application.this <arn>` then
    re-apply.
 4. **After a failed start the app returns to READY silently** — check
-   `aws logs tail /aws/kinesis-analytics/flink-demo` for the real error;
+   `aws logs tail /aws/kinesis-analytics/flink-fable5` for the real error;
    `start_application=true` in Terraform does not re-start an app that
    failed once.
 5. zsh: `"$VAR:latest"` triggers the `:l` modifier — write `"${VAR}:latest"`.

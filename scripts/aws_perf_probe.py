@@ -10,7 +10,8 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
-APP = "flink-demo"
+import os
+APP = os.environ.get("FLINK_APP", "flink-fable5")
 NS = "AWS/KinesisAnalytics"
 
 # (label, metric, TaskOperator filter or None for task-level, stat, aggregate-across-series)

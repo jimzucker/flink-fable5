@@ -35,7 +35,7 @@ locals {
       "--generator.seed", tostring(var.generator_seed),
       "--generator.duplicate.ratio", tostring(var.generator_duplicate_ratio),
       "--generator.price.cents.override", tostring(var.generator_price_cents_override),
-      "--topics.partitions", "4",
+      "--topics.partitions", "16",
     ],
     flatten([for k, v in local.msk_iam_props : ["--${k}", v]])
   )

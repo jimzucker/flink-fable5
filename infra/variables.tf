@@ -1,7 +1,7 @@
 variable "project" {
-  description = "Name prefix for every resource"
+  description = "Name prefix for every resource (matches the git repo)"
   type        = string
-  default     = "flink-demo"
+  default     = "flink-fable5"
 }
 
 variable "region" {

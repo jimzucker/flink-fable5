@@ -47,6 +47,10 @@ resource "aws_kinesisanalyticsv2_application" "this" {
   start_application      = true
 
   application_configuration {
+    application_snapshot_configuration {
+      snapshots_enabled = true
+    }
+
     application_code_configuration {
       code_content {
         s3_content_location {
