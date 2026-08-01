@@ -113,12 +113,15 @@ Same jar, same config knobs as tfvars; measured with
 
 | | AWS baseline (10 t/s, 20 p/s) | Case 1 (1000 t/s) | Storm (10k p/s, 50 accts) |
 |---|---|---|---|
-| trades parsed | 10.0/s | *(appended when measured)* | |
-| prices parsed | 20.0/s | | |
-| dedup out | 9.6/s | | |
-| MV emissions | ~53/s (conflated) | | |
-| busiest task | 5 ms/s | | |
-| backpressure | 0 | | |
+| trades parsed | 10.0/s | **1000.0/s sustained** | *(appended when measured)* |
+| prices parsed | 20.0/s | 20.0/s | |
+| dedup out | 9.6/s | 950.4/s (5% dups) | |
+| MV emissions | ~53/s (conflated) | ~994/s | |
+| busiest task | 5 ms/s | **21.5 ms/s (2.2%)** | |
+| backpressure | 0 | **0** | |
+
+Case 1 verdict: PASS on AWS — 100× the order rate at 2.2% busy on 2 KPUs
+(vs 5.2% on the laptop), zero backpressure. Same jar, tfvar-only change.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 

@@ -47,7 +47,11 @@ STEP 1 — BASELINE (10 trades/s, 20 prices/s, 5 accounts, parallelism 2):
   (conflation active), busiest task 5 ms/s (0.5%), backpressure 0.
   Pipeline behavior identical to the laptop baseline.
 
-STEP 2 — CASE 1 (1000 trades/s, tfvar-only): results appended below.
+STEP 2 — CASE 1 (1000 trades/s, tfvar-only): PASS.
+  trades 1000.0/s sustained, dedup out 950.4/s (5% dups dropped),
+  MV ~994/s (conflation holding), busiest task 21.5 ms/s (2.2% — vs 5.2%
+  on the laptop), backpressure 0. 100x order rate, no performance impact,
+  on 2 KPUs.
 
 STEP 3 — STORM (1000 trades/s + 10,000 prices/s + 50 accounts, the exact
 load that saturated the pre-conflation design locally): results appended
