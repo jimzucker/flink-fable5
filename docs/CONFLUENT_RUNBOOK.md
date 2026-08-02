@@ -1,0 +1,117 @@
+# Confluent Cloud Runbook (Phase 9)
+
+The same trading pipeline, re-implemented in **Flink SQL on Confluent Cloud**.
+The AWS/DataStream version (see AWS_RUNBOOK.md) is unchanged — this is a
+second deployment target, not a replacement. Why it's a rewrite and not a
+port: Confluent Cloud's managed Flink exposes Flink SQL and the Table API
+only, no DataStream API (full analysis: prompts/phase9_prompt.txt).
+
+## Architecture
+
+```
+Java generator (local laptop, unchanged jar)
+      │  plain JSON, SASL_SSL PLAIN
+      ▼
+Confluent Cloud Basic cluster (topics: trades, prices)
+      ▼
+Flink compute pool — 6 SQL statements (confluent/sql/dml/):
+  10  trades ──dedup (ROW_NUMBER per trade_id)──▶ trades-dedup
+  11  trades-dedup ──SUM──▶ position-by-account-ticker
+  12  trades-dedup ──SUM──▶ position-by-ticker
+  13  prices ──250ms tumbling window, last per symbol──▶ prices-conflated   ← the Phase 7 fix, as SQL
+  14  positions ⋈ latest conflated price ──▶ mv-by-account-ticker
+  15  positions ⋈ latest conflated price ──▶ mv-by-ticker
+```
+
+Design decision: **all topics stay plain JSON with the same field names as
+the Java pipeline** (raw-format tables + `JSON_VALUE`/`JSON_OBJECT`, no
+Schema Registry). That's what lets the unchanged Java generator and the same
+five independent validation checks run against both stacks.
+
+## Prerequisites
+
+1. A Confluent Cloud account (new accounts get free credits, more than enough).
+2. A **Cloud API key** (Settings → API keys → "Cloud resource management"
+   scope, OrganizationAdmin): `export CONFLUENT_CLOUD_API_KEY=... CONFLUENT_CLOUD_API_SECRET=...`
+3. Terraform ≥ 1.5, Java 11+, `pip install confluent-kafka` (validation only).
+
+## Deploy
+
+```bash
+cd infra-confluent
+terraform init
+terraform apply        # ~3-5 min: env, Basic cluster, pool, 8 DDL + 6 DML statements
+```
+
+`apply` also writes `config/confluent.properties` (gitignored — contains the
+Kafka API secret) for the generator and validation script.
+
+Start data flowing (local, no ECS needed):
+
+```bash
+scripts/confluent_generator.sh --generator.trades.per.sec 10 --generator.prices.per.sec 20
+```
+
+Watch it: Confluent Cloud console → Environments → flink-fable5 → Flink →
+statements (per-statement metrics), or `scripts/confluent_perf_probe.py`.
+
+## Validate
+
+Stop the generator (Ctrl-C), wait ~15 s, then:
+
+```bash
+python3 scripts/confluent_validate.py
+```
+
+Same five checks as local/AWS: dedup, positions reproducible (both keys),
+completeness invariant, MV = position × final price (exact decimals).
+
+## Load test
+
+The scaling dial here is `max_cfu` (infra-confluent/variables.tf) — the
+compute pool autoscales CFUs up to that cap per statement demand. There is no
+explicit `flink_parallelism`; that's the trade for serverless.
+
+```bash
+scripts/confluent_generator.sh --generator.trades.per.sec 1000 --generator.prices.per.sec 10000 --generator.accounts 50
+python3 scripts/confluent_perf_probe.py --minutes 10
+```
+
+Note: generator runs from the laptop, so the input rate is also bounded by
+your uplink (~2-5k msgs/s of JSON is realistic on home broadband; the AWS
+runs used an in-VPC Fargate generator for the 110k msgs/s numbers — compare
+like with like).
+
+## Teardown
+
+```bash
+cd infra-confluent
+terraform destroy
+```
+
+Verify the zeros: console shows no environments; or
+`confluent environment list` (CLI) returns empty; billing → no active
+resources. Also delete `config/confluent.properties`.
+
+## Gotchas (found while building — updated as deployment proceeds)
+
+1. **No DataStream API on Confluent Cloud.** SQL/Table API only. The
+   KeyedProcessFunction jar cannot run there; this directory is a semantic
+   re-implementation, proven equivalent by the validation suite.
+2. **Plain JSON needs raw-format tables.** Confluent's schema inference
+   expects Schema Registry; schemaless JSON topics surface as raw bytes.
+   Tables here are declared `(key STRING, val STRING)` with
+   `'value.format'='raw'` and parsed with `JSON_VALUE` — byte-compatible
+   with the Java stack.
+3. **Quiesce flush differs from the Java timer.** The DataStream conflation
+   timer fires 250 ms after the last tick regardless; a SQL tumbling window
+   closes only when the watermark passes it, so the final price tick can sit
+   in an unclosed window after the generator stops. The validation script
+   uses the final *conflated* price for the MV checks and WARNs on staleness
+   instead of failing.
+4. **Statement state is retained, not TTL'd per operator.** Dedup state
+   lifetime is governed by statement-level state retention, not the explicit
+   per-operator TTL the Java version sets.
+5. **Custom metrics don't exist.** No demoDuplicatesDropped counters — use
+   per-statement metrics in the console plus the Metrics API
+   (`scripts/confluent_perf_probe.py`).

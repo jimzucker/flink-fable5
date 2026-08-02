@@ -1,0 +1,85 @@
+Phase 9 — Confluent Cloud Edition (session 2026-08-02, Claude Code / Fable 5)
+=============================================================================
+
+PROMPT 9
+--------
+"what would it take to deploy on confluent cloud instead of on AWS, could the
+whole project be done on confluent cloud?" -> "can you create a plan to create
+a confluent cloud version with full deployment, keep what we have for AWS this
+should be in addition, lets track the above analysis as part of the plan,
+create the plan as a new phase and execute it"
+
+ANALYSIS (recorded per request)
+-------------------------------
+The feasibility question hinges on one fact: Confluent Cloud's managed Flink
+supports Flink SQL and the Table API (plus Java UDFs) only — it does NOT
+expose the DataStream API. Our pipeline is built entirely on DataStream
+primitives (KeyedProcessFunction, KeyedCoProcessFunction, hand-managed
+ValueState/MapState, TTL, processing-time timers). So Confluent Cloud is a
+re-implementation in Flink SQL, not a port of the jar.
+
+What maps cleanly:
+- Kafka: MSK Serverless -> Confluent Basic cluster; IAM auth -> API keys.
+  Topics, keyed upserts, validation-from-raw-topics: unchanged.
+- Dedup: standard SQL pattern, ROW_NUMBER() OVER (PARTITION BY trade_id) = 1.
+  TTL becomes statement-level state retention.
+- Positions: keyed SUM aggregation emitting upserts.
+- Market value: join latest price to positions; SQL DECIMAL replaces
+  long-cents + BigDecimal (exactness preserved).
+- Terraform: mature Confluent provider; the SQL lives in
+  confluent_flink_statement resources — arguably a better IaC story than
+  shipping a jar.
+- Generator: existing Java generator already passes through arbitrary
+  kafka.props.*, so it hits Confluent with SASL/PLAIN unchanged, run locally.
+  No ECS needed.
+
+What does not map (the interesting parts):
+1. The Phase 7 conflation fix. The 250 ms per-ticker timer is exactly what
+   DataStream gives you and SQL doesn't. SQL equivalent: a small tumbling
+   window on the price stream keeping the last price per ticker before the
+   join — same work reduction, same final-state semantics, different
+   mechanism.
+2. Custom metrics (demoDuplicatesDropped etc.) are gone — you get Confluent's
+   built-in metrics via their Metrics API only.
+3. The explicit parallelism dial. Compute pools autoscale by CFUs; you set a
+   max, not flink_parallelism = 12. The scaling story becomes "raise the CFU
+   cap, watch it absorb load" — measurable, but less surgical than the
+   P=2/4/8/12 ladder.
+
+Verdict: yes, the whole project can be done on Confluent Cloud as a SQL-first
+re-implementation (less code, fully managed, no jar, no VPC). The validation
+suite is the asset that makes the rewrite safe: it re-derives every output
+from the raw topics and doesn't care what produced them. Fitting close: the
+Phase 1 plan's open question #1 was "any preference for PyFlink or Flink SQL
+instead?" — Phase 9 answers it with both implementations, same tests.
+
+PLAN (Phase 9)
+--------------
+9.1 Record prompt + analysis (this file), extend PLAN.md.
+9.2 Flink SQL pipeline in confluent/sql/: source tables over the same JSON
+    topics; dedup; positions by account+ticker and by ticker; 250 ms price
+    conflation window; MV joins with exact DECIMAL math; upsert sinks with
+    the same JSON field names so the validation logic ports unchanged.
+9.3 Terraform root infra-confluent/ (fully separate from infra/):
+    environment, Basic Kafka cluster, 6 topics, service account + API keys,
+    Flink compute pool, one confluent_flink_statement per SQL file, outputs.
+9.4 Reuse the Java generator locally via config/confluent.properties
+    (SASL_SSL PLAIN through kafka.props.*); scripts/confluent_validate.py
+    (same 5 independent checks); scripts/confluent_perf_probe.py (Confluent
+    Metrics API).
+9.5 Deploy gate: needs a Confluent Cloud account + Cloud API key
+    (TF_VAR/env). terraform apply, run generator at baseline, all 5
+    validation checks green.
+9.6 Load test: ramp generator rates, stats after each rung, record in
+    docs/PERF_RESULTS.md.
+9.7 Docs: docs/CONFLUENT_RUNBOOK.md, README "Confluent Cloud edition"
+    section with the DataStream-vs-SQL comparison.
+9.8 Teardown (verify zeros), squash-merge to main, tag Phase-9.
+
+Review gates: (a) SQL + Terraform reviewed before apply; (b) validation green
+before load tests; (c) results reviewed before teardown.
+
+RESPONSE (summary — updated as the phase executes)
+--------------------------------------------------
+[9.1-9.4 built on branch phase9-confluent; deploy pending Confluent
+credentials]
