@@ -192,6 +192,41 @@ to pass any case.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 
+## Phase 9 — Confluent Cloud edition (same pipeline, rewritten in Flink SQL, 2026-08-02)
+
+Confluent Cloud's managed Flink has no DataStream API, so this is a
+re-implementation in SQL (`confluent/sql/`), proven equivalent by the same
+five validation checks running unchanged against the raw topics — **all
+green**. The Phase 7 conflation timer became a 250 ms tumbling window;
+the generator is the same unchanged jar, running from a laptop
+(no ECS — Confluent needs no VPC).
+
+Load ladder (Basic cluster, compute pool `max_cfu=10`, Metrics API,
+6-min steady-state windows; rates are per-topic `received_records`):
+
+| | Baseline | Rung 1 | Rung 2 (storm) | Rung 3 (storm×2) |
+|---|---|---|---|---|
+| trades/s in | 10 | 100 | 100 | 500 |
+| prices/s in | 20 | 500 | 5,000 | 9,970 peak |
+| consumed vs produced | 1:1 | 1:1 | 1:1 | 1:1 |
+| **conflated out/s** | — | ~10 | ~10 | **~10** |
+| conflation reduction | — | ~50× | ~490× | **~950×** |
+| MV out/s (bounded) | ~5 | ~11 | ~21 | ~44 |
+| order-path impact | none | none | none | none |
+
+The headline: **conflated output stayed flat at ~10/s while the price storm
+grew 500 → 5,000 → 10,000/s.** Work at the MV joins is a function of
+tickers × windows, not tick rate — the Phase 7 result, reproduced on a
+second engine. ~10.5k msgs/s total sustained from a laptop against the
+serverless pool with zero lag; input rate was bounded by the laptop, not
+the pool.
+
+Validation nuance found here: exactly-once sinks publish only at checkpoint
+commits, so "drained" means minutes, not seconds — early validation runs
+show stale-but-internally-consistent outputs that converge to green.
+Deployment story and gotchas (statement-name races, `IF NOT EXISTS`,
+the JDK 25 silent SASL failure): [CONFLUENT_RUNBOOK.md](CONFLUENT_RUNBOOK.md#gotchas-found-while-building--updated-as-deployment-proceeds).
+
 ## Capacity playbook (how to handle any volume)
 
 Measured capacity model: **~12k msgs/s per KPU** on this workload, linear to

@@ -64,7 +64,15 @@ def main():
     key = os.environ.get("CONFLUENT_CLOUD_API_KEY")
     secret = os.environ.get("CONFLUENT_CLOUD_API_SECRET")
     if not (key and secret):
-        sys.exit("set CONFLUENT_CLOUD_API_KEY / CONFLUENT_CLOUD_API_SECRET (Cloud API key)")
+        # Same fallback Terraform uses: ~/.confluent-creds with KEY=VALUE lines
+        creds = os.path.expanduser("~/.confluent-creds")
+        if os.path.exists(creds):
+            with open(creds) as f:
+                vals = dict(line.strip().split("=", 1) for line in f if "=" in line)
+            key = key or vals.get("CONFLUENT_CLOUD_API_KEY")
+            secret = secret or vals.get("CONFLUENT_CLOUD_API_SECRET")
+    if not (key and secret):
+        sys.exit("set CONFLUENT_CLOUD_API_KEY / CONFLUENT_CLOUD_API_SECRET (Cloud API key), or create ~/.confluent-creds")
     auth = base64.b64encode(f"{key}:{secret}".encode()).decode()
     cluster_id = args.cluster_id or cluster_id_from_terraform()
 

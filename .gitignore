@@ -10,3 +10,4 @@ dependency-reduced-pom.xml
 *.tfstate.backup
 *.tfvars
 config/confluent.properties
+__pycache__/

@@ -115,3 +115,25 @@ resources. Also delete `config/confluent.properties`.
 5. **Custom metrics don't exist.** No demoDuplicatesDropped counters — use
    per-statement metrics in the console plus the Metrics API
    (`scripts/confluent_perf_probe.py`).
+6. **Statement-name 409 race on first apply.** With a freshly minted Flink
+   API key, the provider's first submit can land slowly, its retry then hits
+   `409 Statement already exists`, and the statements are left FAILED and
+   outside Terraform state (the Confluent twin of the AWS MSF
+   tag-propagation race from Phase 8). Fix: delete the orphaned statements
+   via the Flink REST API and re-apply.
+7. **Statements ≠ tables.** Deleting a statement record does NOT drop the
+   table/topic it created, so a re-run of plain `CREATE TABLE` dies on
+   `table already exists`. All DDL here is `CREATE TABLE IF NOT EXISTS` —
+   which is what you want in IaC anyway.
+8. **JDK 25 silently breaks the Java Kafka client.** The kafka-clients
+   bundled with Flink 1.20 use JAAS APIs removed in modern JDKs: the SASL
+   channel fails to construct, the producer retries metadata forever, and
+   with no slf4j binding on the classpath *nothing is logged* — the
+   generator ran 2.5 min printing its banner while delivering zero records.
+   Diagnosed with a one-off `send().get()` probe; fixed by pinning
+   Java 17 (`confluent_generator.sh` does this automatically).
+9. **"Drained" means minutes, not seconds.** Exactly-once sinks publish
+   results only at checkpoint commits. Right after stopping the generator,
+   outputs are stale but internally consistent (positions ↔ MV agree with
+   each other, both behind the raw topics) and converge to exact over the
+   next checkpoint cycles. Wait ~3-5 min before `confluent_validate.py`.

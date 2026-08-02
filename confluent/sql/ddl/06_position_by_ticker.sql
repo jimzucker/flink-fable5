@@ -1,4 +1,4 @@
-CREATE TABLE `position-by-ticker` (
+CREATE TABLE IF NOT EXISTS `position-by-ticker` (
   `key` STRING,
   `val` STRING,
   PRIMARY KEY (`key`) NOT ENFORCED

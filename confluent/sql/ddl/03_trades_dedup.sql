@@ -1,6 +1,6 @@
 -- Deduplicated trades (first occurrence per trade_id wins).
 -- Append-only: first-row deduplication emits inserts only.
-CREATE TABLE `trades-dedup` (
+CREATE TABLE IF NOT EXISTS `trades-dedup` (
   `key` STRING,
   `val` STRING
 ) DISTRIBUTED BY HASH(`key`) INTO 6 BUCKETS

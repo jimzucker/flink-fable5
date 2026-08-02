@@ -194,6 +194,26 @@ S3) + Fargate generator + CloudWatch dashboard. Rescale with
 `terraform apply -var flink_parallelism=N`. Deploy/update/teardown:
 [docs/AWS_RUNBOOK.md](docs/AWS_RUNBOOK.md) (≈ $1/hr while running).
 
+## Confluent Cloud (same pipeline, rewritten in Flink SQL)
+
+[`confluent/sql/`](confluent/sql/) + [`infra-confluent/`](infra-confluent/) are a
+second, fully independent deployment target: the identical requirements
+re-implemented as **six Flink SQL statements on Confluent Cloud's serverless
+Flink** (which has no DataStream API — see the analysis in
+[prompts/phase9_prompt.txt](prompts/phase9_prompt.txt)). The topics keep the
+same names and plain-JSON contracts, so the **same generator jar and the same
+five validation checks run unchanged against both stacks — and pass**. The
+Phase 7 conflation timer becomes a 250 ms tumbling window: in the measured
+storm test, 10,000 prices/s in → ~10 conflated updates/s out (~950×), with
+the order path untouched. Results in
+[docs/PERF_RESULTS.md](docs/PERF_RESULTS.md#phase-9--confluent-cloud-edition-same-pipeline-rewritten-in-flink-sql-2026-08-02),
+deploy/gotchas in [docs/CONFLUENT_RUNBOOK.md](docs/CONFLUENT_RUNBOOK.md).
+
+DataStream vs SQL, one line each way: DataStream buys the surgical stuff —
+per-key timers, custom metrics, explicit parallelism; SQL buys ~200 lines
+instead of ~2,000, no jar, no VPC, and a rewrite that a validation suite can
+prove equivalent in an afternoon.
+
 ## Repository map
 
 ```
@@ -204,7 +224,9 @@ config/                      every runtime knob, laptop and generator alike
 docker-compose.yml           Kafka (KRaft) + Flink + generator + Prometheus + Grafana
 monitoring/                  Prometheus config, provisioned Grafana dashboard
 infra/                       Terraform for AWS (MSK, Managed Flink, Fargate, CloudWatch)
-scripts/                     validate_live.py, perf_probe.py, scaling_test.py
+confluent/sql/               the same pipeline as Flink SQL (Confluent Cloud edition)
+infra-confluent/             Terraform for Confluent Cloud (cluster, pool, statements)
+scripts/                     validate_live.py, perf_probe.py, scaling_test.py, confluent_*
 prompts/                     the six engineering prompts that built this, per phase
 docs/                        PLAN follow-ups: perf results, AWS runbook, article, exec deck
 PLAN.md / VALIDATION.md      the design doc and the correctness one-pager

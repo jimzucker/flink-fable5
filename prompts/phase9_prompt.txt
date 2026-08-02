@@ -79,7 +79,45 @@ PLAN (Phase 9)
 Review gates: (a) SQL + Terraform reviewed before apply; (b) validation green
 before load tests; (c) results reviewed before teardown.
 
-RESPONSE (summary — updated as the phase executes)
---------------------------------------------------
-[9.1-9.4 built on branch phase9-confluent; deploy pending Confluent
-credentials]
+RESPONSE (summary of the execution)
+-----------------------------------
+Built on branch phase9-confluent: 8 raw-format tables + 6 SQL statements
+(confluent/sql/), Terraform root infra-confluent/ (env, Basic cluster, pool
+max_cfu=10, one confluent_flink_statement per SQL file), generator launcher,
+confluent_validate.py (same 5 checks), Metrics API perf probe.
+
+Deployment bumps, each found by verifying (the AWS Phase 8 story, new cloud):
+1. 402 Payment Required — account had no card on file; user added one.
+2. Statement-name 409 race: with a freshly minted Flink API key the
+   provider's first submit landed slowly, its retry hit "already exists",
+   8 statements left FAILED outside TF state (the Confluent twin of the MSF
+   tag race). Deleted via Flink REST API, re-applied.
+3. Statements != tables: deleting a statement does not drop its table, so
+   plain CREATE TABLE re-runs died on "table already exists". Fixed with
+   CREATE TABLE IF NOT EXISTS everywhere (better IaC anyway).
+4. JDK 25 silently breaks Flink 1.20's kafka-clients: SASL channel never
+   constructs (removed JAAS APIs), producer retries metadata forever,
+   NOP logger hides everything — generator ran 2.5 min delivering ZERO
+   records while python delivered instantly. Diagnosed with a send().get()
+   probe; fixed by pinning Java 17 in confluent_generator.sh.
+5. Exactly-once sinks publish at checkpoint commits: right after quiesce
+   the outputs are stale but internally consistent, converging to exact
+   over the next checkpoints. "Drained" = minutes, not seconds.
+
+VALIDATION: ALL 5 CHECKS GREEN (baseline 10+20/s: 1,590 trades, 63 dups
+absorbed, 50 account+ticker keys exact, MV exact decimals). One WARN by
+design: last 250 ms window can stay unclosed after quiesce (watermark
+stops), so the final conflated price may lag the final raw tick — the one
+honest semantic difference vs the Java timer.
+
+LOAD LADDER (laptop generator -> serverless pool, Metrics API, 6-min
+steady-state):
+  rung 1:  100 trades/s +   500 prices/s -> conflated ~10/s (~50x), 1:1
+  rung 2:  100 trades/s + 5,000 prices/s -> conflated ~10/s (~490x), 1:1
+  rung 3:  500 trades/s + 9,970 prices/s -> conflated ~10/s (~950x), 1:1
+Conflated output FLAT at ~10/s across a 20x storm — MV work is a function
+of tickers x windows, not tick rate. Order path untouched at every rung.
+~10.5k msgs/s total sustained; bounded by the laptop, not the pool.
+
+Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
+(9 gotchas), README Confluent section + repo map.

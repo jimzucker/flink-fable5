@@ -1,4 +1,4 @@
-CREATE TABLE `mv-by-ticker` (
+CREATE TABLE IF NOT EXISTS `mv-by-ticker` (
   `key` STRING,
   `val` STRING,
   PRIMARY KEY (`key`) NOT ENFORCED
