@@ -46,10 +46,22 @@ run and be measured before we moved on. In production, those same problems
 would have been incidents. All of it is in the repo: the plan, the code,
 the tests, the results, and all eight prompts.
 
+**The Sunday epilogue: same tests, second cloud.** One more prompt:
+*could the whole thing run on Confluent Cloud instead?* Their managed
+Flink speaks SQL, not Java — so the pipeline was rewritten as six SQL
+statements, and the same validation suite, unchanged, proved the rewrite
+correct: every position and market value exact to the cent after 300,000
+trades. Then it beat Saturday's throughput record — 232,000 messages/sec,
+2.1× the AWS finale — and the month-by-month cost model came out at rough
+parity. About $4 of Confluent, torn down by evening. That's the quiet
+payoff of tests that re-derive truth from raw data: switching engines, or
+clouds, becomes an afternoon, not a quarter.
+
 **github.com/jimzucker/flink-fable5**
 
 *One day — 5.7 active hours, 2.6 of them me reviewing and steering.
 8 engineering prompts out of 83 messages. 394M tokens of AI (≈$515
 metered — flat-rate in practice). $5 of AWS. 300M price updates absorbed
-by one well-placed window. Every number above traceable to a measurement
+by one well-placed window. Plus a Sunday afternoon and $4 for the
+Confluent second opinion. Every number above traceable to a measurement
 in the repo.*
