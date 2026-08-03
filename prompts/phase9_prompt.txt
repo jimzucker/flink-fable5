@@ -123,5 +123,24 @@ POST-STORM VALIDATION: ALL 5 CHECKS GREEN at full scale — 299,690 trades
 (14,847 dups absorbed), 500 account+ticker keys + 10 tickers recomputed
 from raw topics, every position and MV exact to the cent.
 
+FOLLOW-UP (user): "did we run all the same tests we ran on aws" ->
+"run case 1 and 2; we only care about comparing cents to 6 decimals; for
+case 3 how can we show the scaling?" -> "we need to show confluent cloud
+can handle the same volume as msk"
+
+CASE 1 (1,000 trades/s): 997/s peak, consumed 1:1, dedup at rate, MV
+bounded — same verdict as AWS.
+CASE 2 (price $10^13 at 1,000 trades/s): throughput unchanged; 500/500
+keys exact, largest MV $2,345,200,000,000,000,000.00 = 19 significant
+digits exact (0 mismatches).
+VOLUME PARITY (backlog-drain method, since a laptop can't ingest 110k/s):
+in-cloud amplification to 26.4M records (copies themselves hit 190k/s
+peak), then conflation-shaped drain from earliest:
+  max_cfu=10 -> 132,613/s peak, 3 consecutive min >= 110k  (1.2x MSK finale)
+  max_cfu=20 -> 232,703/s peak at 16 CFUs autoscaled       (2.1x MSK finale)
+Both backlog-limited, not pool-limited; ~linear scaling; pool idles at
+6 CFUs otherwise. Honest scope: processing capacity proven at volume;
+live ingest at 110k/s would need a cloud-side producer.
+
 Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
 (9 gotchas), README Confluent section + repo map.

@@ -226,6 +226,43 @@ trade records (14,847 duplicates absorbed), 500 account+ticker keys and 10
 tickers recomputed from the raw topics, every position and market value
 exact to the cent. Same suite, same verdict as the Java pipeline.
 
+### AWS-comparison cases, re-run on Confluent
+
+**Case 1 — 1,000 trades/s sustained:** 997/s peak in, consumed 1:1, dedup
+absorbing the seeded 5% duplicates at full rate, MV output bounded (~52/s).
+Same verdict as AWS Case 1: order path flat, zero lag.
+
+**Case 2 — extreme price ($10^13/share) at 1,000 trades/s:** throughput
+identical to Case 1 (996/s, 1:1). Exactness spot-check across all 500
+account+ticker keys: **0 mismatches**; largest verified value
+234,520 shares × $10,000,000,000,000.00 = **$2,345,200,000,000,000,000.00
+exactly** — 19 significant digits, far beyond double precision. SQL
+`DECIMAL` passes the same test the Java `BigDecimal` passed (comparison
+scope: exact to the cent; ≤6 decimal places is the stated requirement).
+
+### Volume parity with MSK — the 110k msgs/s bar
+
+No 110k/s live ingest from a laptop (AWS used an in-VPC Fargate generator),
+so capacity was measured the same way AWS saturation was: **backlog drain**.
+The cluster amplified its own price topic in-cloud to a 26.4M-record
+`prices-bulk` backlog (the four copy statements themselves sustained ~110k
+peak 190k msgs/s while doing it), then a fresh conflation-shaped statement
+consumed it from offset zero:
+
+| max_cfu | CFUs used (autoscaled) | sustained drain | peak minute | vs MSK finale (110k @ P=12) |
+|---|---|---|---|---|
+| 10 | 10 | 110.8k → 132.6k/s for 3 consecutive min | **132,613/s** | **1.2×** |
+| 20 | 16 (all it needed) | 138k → 232k/s | **232,703/s** | **2.1×** |
+
+Both runs ended **backlog-limited, not pool-limited**, with conflated
+output still bounded (~12/s) at full rate. Scaling ~linear: 1.6× the CFUs
+→ 1.75× the throughput — the CFU cap is the same dial `flink_parallelism`
+was, except the autoscaler turns it for you (the pool idled at 6 CFUs
+through every functional test and grabbed capacity only under the storm).
+Honest scope note: this proves *processing* capacity at MSK-finale volume
+on the same workload shape; live *ingest* at 110k/s would additionally
+need a cloud-side producer (Datagen connector or a Fargate task).
+
 Validation nuance found here: exactly-once sinks publish only at checkpoint
 commits, so "drained" means minutes, not seconds — early validation runs
 show stale-but-internally-consistent outputs that converge to green.
