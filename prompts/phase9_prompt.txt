@@ -142,5 +142,25 @@ Both backlog-limited, not pool-limited; ~linear scaling; pool idles at
 6 CFUs otherwise. Honest scope: processing capacity proven at volume;
 live ingest at 110k/s would need a cloud-side producer.
 
+FOLLOW-UP (user): "the stats are confusing... make it plain english
+compare" -> plain-English comparison table added to PERF_RESULTS (one
+vocabulary for both clouds: messages/sec, processing units, same verdicts).
+
+FOLLOW-UP (user): "can you estimate monthly cost aws vs confluent for each
+case" -> cost model recorded in PERF_RESULTS (24/7 at list prices, ±30%,
+from measured footprints: ~100 B/msg, real KPU/CFU counts):
+  Case 1 (1,000 trades/s):  AWS ~$1,070/mo  vs  Confluent ~$1,010/mo
+  Case 2 (11k msgs/s storm): AWS ~$1,470/mo  vs  Confluent ~$1,500/mo
+  Case 3 (110k msgs/s):      AWS ~$6,100/mo  vs  Confluent ~$4,500/mo
+Parity at normal volume (AWS pays a fixed cluster base, Confluent a 6-CFU
+statement floor); at sustained high volume data transfer dominates and
+Confluent trends ~25% cheaper on list. The big lever on both clouds above
+~10k msgs/s is bytes on the wire (Avro/Protobuf 3-5x), not compute.
+
+TEARDOWN: terraform destroy (22 resources), zeros verified via Confluent
+API (only the built-in 'default' env remains, no clusters, no compute
+pools), client secrets file auto-removed. Squash-merged to main, tagged
+Phase-9. Confluent spend for the whole phase: ~$3-5.
+
 Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
 (9 gotchas), README Confluent section + repo map.
