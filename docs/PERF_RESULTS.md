@@ -240,7 +240,25 @@ exactly** — 19 significant digits, far beyond double precision. SQL
 `DECIMAL` passes the same test the Java `BigDecimal` passed (comparison
 scope: exact to the cent; ≤6 decimal places is the stated requirement).
 
-### Volume parity with MSK — the 110k msgs/s bar
+### AWS vs Confluent, in plain English
+
+How to read it: a *message* is one trade or one price update. Both clouds ran
+the same generator data and the same five correctness checks. Both scale by
+adding *processing units* (AWS: KPUs, Confluent: CFUs — each roughly one
+CPU's worth). On AWS you pick the number by hand; on Confluent you set a
+ceiling and it adds units by itself.
+
+| What we tested | AWS | Confluent Cloud | Verdict |
+|---|---|---|---|
+| Correctness — 5 checks recomputed from raw data | All passed | All passed | Identical, exact results on both |
+| Normal trading day — 1,000 trades/sec | Kept up, no delay | Kept up, no delay | Neither falls behind |
+| Ridiculous prices — $10 trillion/share | Exact to the cent | Exact to the cent (500 accounts, zero errors) | Money math never loses a cent on either |
+| Price storm — 10,000 price updates/sec | Absorbed by the 250 ms window; trades unaffected | Same: 10,000/sec in, ~10/sec out; trades unaffected | The bottleneck fix works identically |
+| Top speed | 110,000 msgs/sec on 12 hand-picked units | 132,000/sec capped at 10 units; **232,000/sec** capped at 20 (used 16) | Confluent processed 2× the AWS record; both runs ended because the test data ran out, not capacity |
+| How you turn it up | Edit one setting, redeploy | Raise one ceiling; it scales itself | Same dial — Confluent turns it for you |
+| The honest footnote | Data generated inside AWS at full speed | A laptop can't *send* 110k/sec, so we measured Confluent chewing through a 26M-message backlog | Confluent's number is proven processing speed; live feeding at that rate needs a cloud-based generator |
+
+### Volume parity with MSK — the 110k msgs/s bar (measurement detail)
 
 No 110k/s live ingest from a laptop (AWS used an in-VPC Fargate generator),
 so capacity was measured the same way AWS saturation was: **backlog drain**.
