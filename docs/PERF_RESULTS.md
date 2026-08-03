@@ -258,6 +258,28 @@ ceiling and it adds units by itself.
 | How you turn it up | Edit one setting, redeploy | Raise one ceiling; it scales itself | Same dial — Confluent turns it for you |
 | The honest footnote | Data generated inside AWS at full speed | A laptop can't *send* 110k/sec, so we measured Confluent chewing through a 26M-message backlog | Confluent's number is proven processing speed; live feeding at that rate needs a cloud-based generator |
 
+### Monthly cost estimate, AWS vs Confluent (list prices, 24/7, ±30%)
+
+Built from measured footprints (≈100 B/message from the generator; KPU/CFU
+counts from the actual runs) and 2026 us-east-1 list prices: AWS Flink
+$0.11/KPU-hr (+1 orchestration KPU), MSK Serverless $0.75/cluster-hr +
+$0.0015/partition-hr + $0.10/GB in + $0.05/GB out; Confluent Flink
+$0.21/CFU-hr (actual use), Basic cluster $0 base + $0.014–0.05/GB network.
+No committed-use discounts; Confluent eCKU capacity rates vary by account.
+
+| Running 24/7 at… | AWS | Confluent | Where the money goes |
+|---|---|---|---|
+| Case 1 — 1,000 trades/s | ≈ $1,070/mo | ≈ $1,010/mo | AWS: fixed cluster base ($653). Confluent: 6-CFU statement floor ($920) |
+| Case 2 — 11k msgs/s storm | ≈ $1,470/mo | ≈ $1,500/mo | Parity; conflation is what keeps compute flat on both |
+| Case 3 — 110k msgs/s | ≈ $6,100/mo | ≈ $4,500/mo | Data transfer dominates: MSK ingest ~$2,900/mo alone; Confluent's cheaper network offsets pricier compute |
+
+One-line takeaway: parity at normal volumes; Confluent ~25% cheaper at
+sustained high volume on list price; on both clouds the big lever above
+~10k msgs/s is bytes on the wire (Avro/Protobuf would cut 3–5×), not
+compute. Sources: AWS Managed Flink pricing page, MSK Serverless pricing,
+Confluent Flink billing docs — links in the article/runbook; verify against
+your rate card before believing any single dollar.
+
 ### Volume parity with MSK — the 110k msgs/s bar (measurement detail)
 
 No 110k/s live ingest from a laptop (AWS used an in-VPC Fargate generator),
