@@ -154,8 +154,8 @@ from measured footprints: ~100 B/msg, real KPU/CFU counts):
   Case 3 (110k msgs/s):      AWS ~$6,100/mo  vs  Confluent ~$3,500/mo
 (User review catch: price Confluent at the 10-CFU operating point that
 covers 110k — measured 132.6k/s there — not the 16-CFU/232k demo point.)
-Parity at normal volume (AWS pays a fixed cluster base, Confluent a 6-CFU
-statement floor); at sustained high volume data transfer dominates and
+Parity at volumes under ~10k msgs/s (AWS pays a fixed cluster base,
+Confluent a 6-CFU statement floor); at sustained high volume data transfer dominates and
 Confluent trends ~40% cheaper on list when sized to the same job. The big lever on both clouds above
 ~10k msgs/s is bytes on the wire (Avro/Protobuf 3-5x), not compute.
 
