@@ -53,7 +53,8 @@ statements, and the same validation suite, unchanged, proved the rewrite
 correct: every position and market value exact to the cent after 300,000
 trades. Then it beat Saturday's throughput record — 232,000 messages/sec,
 2.1× the AWS finale — at an estimated monthly cost about the same as AWS
-at normal volume, and roughly 25% less at peak. About $4 of Confluent,
+at normal volume — and sized to the identical 110k msgs/sec job, roughly
+40% less. About $4 of Confluent,
 torn down by evening. That's the quiet
 payoff of tests that re-derive truth from raw data: switching engines, or
 clouds, becomes an afternoon, not a quarter.
