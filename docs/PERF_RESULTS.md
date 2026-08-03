@@ -221,6 +221,11 @@ second engine. ~10.5k msgs/s total sustained from a laptop against the
 serverless pool with zero lag; input rate was bounded by the laptop, not
 the pool.
 
+Post-storm validation: **all five checks green at full scale** — 299,690
+trade records (14,847 duplicates absorbed), 500 account+ticker keys and 10
+tickers recomputed from the raw topics, every position and market value
+exact to the cent. Same suite, same verdict as the Java pipeline.
+
 Validation nuance found here: exactly-once sinks publish only at checkpoint
 commits, so "drained" means minutes, not seconds — early validation runs
 show stale-but-internally-consistent outputs that converge to green.

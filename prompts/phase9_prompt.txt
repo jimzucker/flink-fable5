@@ -119,5 +119,9 @@ Conflated output FLAT at ~10/s across a 20x storm — MV work is a function
 of tickers x windows, not tick rate. Order path untouched at every rung.
 ~10.5k msgs/s total sustained; bounded by the laptop, not the pool.
 
+POST-STORM VALIDATION: ALL 5 CHECKS GREEN at full scale — 299,690 trades
+(14,847 dups absorbed), 500 account+ticker keys + 10 tickers recomputed
+from raw topics, every position and MV exact to the cent.
+
 Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
 (9 gotchas), README Confluent section + repo map.
