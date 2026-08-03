@@ -245,6 +245,23 @@ review: design → walking skeleton → full calculations + dashboard → correc
 suite → AWS IaC → load tests → price-storm conflation (a Phase 7 born from a
 review finding — the fan-out bottleneck was predicted by a human, then proven
 and fixed the same day) → AWS deployment + the measured scaling ladder
-(Phase 8). Git history mirrors it: one squash commit per phase,
-tagged `Phase-2`…`Phase-7`, with the detailed history preserved on the phase
-branches. Executive summary deck: [docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).
+(Phase 8) → the Confluent Cloud edition, proven equivalent by the same
+validation suite (Phase 9). Git history mirrors it: one squash commit per
+phase, tagged `Phase-2`…`Phase-9`, with the detailed history preserved on the
+phase branches. Executive summary deck:
+[docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).
+The story, in ~530 words:
+[the LinkedIn article](https://www.linkedin.com/pulse/i-built-production-grade-flink-trading-pipeline-one-day-zucker--xsqjc/).
+
+### What it took to build (AI-assisted, measured like everything else)
+
+| | Session 1 (Sat) | Session 2 (Sun) | Project total |
+|---|---|---|---|
+| Prompts | 83 (8 engineering) | 37 (1 engineering — Phase 9) | 120 (9) |
+| Assistant turns | 1,078 | 587 | ~1,665 |
+| AI tokens | 394M (≈$515 metered) | 118M (≈$184 metered) | ~512M (≈$699 — flat-rate in practice) |
+| Active hours | 5.7 (2.6 human review/steering) | 3.2 (1.1 human) | ~8.9 (~3.7 human) |
+| Cloud spend | ~$5 AWS | ~$4 Confluent | ~$9, torn down to verified zero |
+
+Stats parsed from the Claude Code session transcripts, the same way every
+other number here was measured.
