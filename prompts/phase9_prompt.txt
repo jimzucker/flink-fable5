@@ -151,10 +151,12 @@ case" -> cost model recorded in PERF_RESULTS (24/7 at list prices, ±30%,
 from measured footprints: ~100 B/msg, real KPU/CFU counts):
   Case 1 (1,000 trades/s):  AWS ~$1,070/mo  vs  Confluent ~$1,010/mo
   Case 2 (11k msgs/s storm): AWS ~$1,470/mo  vs  Confluent ~$1,500/mo
-  Case 3 (110k msgs/s):      AWS ~$6,100/mo  vs  Confluent ~$4,500/mo
-Parity at normal volume (AWS pays a fixed cluster base, Confluent a 6-CFU
-statement floor); at sustained high volume data transfer dominates and
-Confluent trends ~25% cheaper on list. The big lever on both clouds above
+  Case 3 (110k msgs/s):      AWS ~$6,100/mo  vs  Confluent ~$3,500/mo
+(User review catch: price Confluent at the 10-CFU operating point that
+covers 110k — measured 132.6k/s there — not the 16-CFU/232k demo point.)
+Parity at volumes under ~10k msgs/s (AWS pays a fixed cluster base,
+Confluent a 6-CFU statement floor); at sustained high volume data transfer dominates and
+Confluent trends ~40% cheaper on list when sized to the same job. The big lever on both clouds above
 ~10k msgs/s is bytes on the wire (Avro/Protobuf 3-5x), not compute.
 
 TEARDOWN: terraform destroy (22 resources), zeros verified via Confluent

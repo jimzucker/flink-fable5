@@ -20,6 +20,7 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
 | **Scaling proven on AWS** | P=2→4→8 = 16.5k→52k→97k msgs/s at saturation — config-only rescales, zero job restarts ([ladder](docs/PERF_RESULTS.md)) |
+| **Same results on a second cloud** | Rewritten in Flink SQL on Confluent Cloud: same 5 checks pass, 232k msgs/s measured (2.1× the AWS finale), est. cost parity under ~10k msgs/s and ~40% less at the 110k job ([comparison](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 
@@ -205,7 +206,12 @@ same names and plain-JSON contracts, so the **same generator jar and the same
 five validation checks run unchanged against both stacks — and pass**. The
 Phase 7 conflation timer becomes a 250 ms tumbling window: in the measured
 storm test, 10,000 prices/s in → ~10 conflated updates/s out (~950×), with
-the order path untouched. Results in
+the order path untouched. Volume was measured by backlog drain: 132.6k
+msgs/s inside a 10-CFU cap, **232.7k msgs/s** inside a 20-CFU cap (the
+autoscaler used 16) — 1.2× and 2.1× the AWS 110k finale, both runs ending
+because the 26M-record backlog ran out, not capacity. Estimated monthly
+cost: parity with AWS under ~10k msgs/s; sized to the same 110k msgs/s
+job, roughly 40% less. Results in
 [docs/PERF_RESULTS.md](docs/PERF_RESULTS.md#phase-9--confluent-cloud-edition-same-pipeline-rewritten-in-flink-sql-2026-08-02),
 deploy/gotchas in [docs/CONFLUENT_RUNBOOK.md](docs/CONFLUENT_RUNBOOK.md).
 
