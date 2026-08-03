@@ -164,5 +164,21 @@ API (only the built-in 'default' env remains, no clusters, no compute
 pools), client secrets file auto-removed. Squash-merged to main, tagged
 Phase-9. Confluent spend for the whole phase: ~$3-5.
 
+FOLLOW-UP (user): "update linkedin article and ppt with the confluent
+story / let me review before merging" -> review branch, Sunday-epilogue
+section + comparison slide; two more review catches by the user (cost
+sized to the same 110k job -> ~40% not 25%; "normal volume" -> named
+threshold "under ~10k msgs/s"); README synced; merged on approval.
+
+POSTED (2026-08-03): article published to LinkedIn with the Grafana
+dashboard as cover —
+linkedin.com/pulse/i-built-production-grade-flink-trading-pipeline-one-day-zucker--xsqjc/
+
+SESSION 2 STATS (2026-08-02/03): 37 prompts, 587 assistant turns, 118M
+tokens (~$184 metered — flat-rate in practice), 3.2 active hours (1.1
+human review/steering). Project totals across both sessions: 120 prompts
+(9 engineering), ~512M tokens ~ $699 metered, ~8.9 active hours (~3.7
+human), ~$9 of cloud across AWS + Confluent.
+
 Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
 (9 gotchas), README Confluent section + repo map.
