@@ -148,3 +148,33 @@ same configs.
 2. AWS target: Managed Service for Apache Flink (proposed) vs. self-managed on EKS?
 3. Output consumption: are Kafka topics sufficient, or do we also want a sink to a DB/S3 for inspection?
 4. Any required Flink version (proposing latest stable 1.20.x for MSF compatibility)?
+
+---
+
+## Phase 9 — Confluent Cloud edition (in addition to AWS)
+
+Open question #1 above, answered by building it: the same requirements,
+re-implemented in **Flink SQL on Confluent Cloud**, verified by the same
+independent validation checks. The AWS/DataStream version stays; this is a
+parallel deployment target, not a replacement.
+
+Why a rewrite and not a port: Confluent Cloud's managed Flink exposes Flink
+SQL and the Table API only — no DataStream API — so the KeyedProcessFunction/
+timer code cannot run there. Full analysis in prompts/phase9_prompt.txt.
+
+- **9.2** `confluent/sql/` — the pipeline as SQL: dedup (ROW_NUMBER per
+  trade_id), positions (keyed SUM upserts), 250 ms tumbling-window price
+  conflation (the SQL twin of the Phase 7 timer), MV joins in exact DECIMAL,
+  sinks with the same JSON field names as the Java pipeline.
+- **9.3** `infra-confluent/` — separate Terraform root: environment, Basic
+  cluster, topics, service account/API keys, Flink compute pool, one
+  `confluent_flink_statement` per SQL file.
+- **9.4** Existing Java generator reused locally (kafka.props.* SASL/PLAIN);
+  `scripts/confluent_validate.py` re-runs the 5 checks; Metrics API probe.
+- **9.5–9.6** Deploy (gate: Confluent API keys), validate green, load-test
+  ladder with stats per rung.
+- **9.7–9.8** Runbook + README comparison section; teardown with verified
+  zeros; squash-merge, tag Phase-9.
+
+**Outcome to review:** the same validation suite passing against two
+implementations on two clouds, plus a DataStream-vs-SQL comparison table.

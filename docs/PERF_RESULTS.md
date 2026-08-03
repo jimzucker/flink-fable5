@@ -192,6 +192,123 @@ to pass any case.
 
 Deployment story and gotchas: [AWS_RUNBOOK.md](AWS_RUNBOOK.md#deployment-gotchas-learned-the-hard-way-2026-08-01).
 
+## Phase 9 — Confluent Cloud edition (same pipeline, rewritten in Flink SQL, 2026-08-02)
+
+Confluent Cloud's managed Flink has no DataStream API, so this is a
+re-implementation in SQL (`confluent/sql/`), proven equivalent by the same
+five validation checks running unchanged against the raw topics — **all
+green**. The Phase 7 conflation timer became a 250 ms tumbling window;
+the generator is the same unchanged jar, running from a laptop
+(no ECS — Confluent needs no VPC).
+
+Load ladder (Basic cluster, compute pool `max_cfu=10`, Metrics API,
+6-min steady-state windows; rates are per-topic `received_records`):
+
+| | Baseline | Rung 1 | Rung 2 (storm) | Rung 3 (storm×2) |
+|---|---|---|---|---|
+| trades/s in | 10 | 100 | 100 | 500 |
+| prices/s in | 20 | 500 | 5,000 | 9,970 peak |
+| consumed vs produced | 1:1 | 1:1 | 1:1 | 1:1 |
+| **conflated out/s** | — | ~10 | ~10 | **~10** |
+| conflation reduction | — | ~50× | ~490× | **~950×** |
+| MV out/s (bounded) | ~5 | ~11 | ~21 | ~44 |
+| order-path impact | none | none | none | none |
+
+The headline: **conflated output stayed flat at ~10/s while the price storm
+grew 500 → 5,000 → 10,000/s.** Work at the MV joins is a function of
+tickers × windows, not tick rate — the Phase 7 result, reproduced on a
+second engine. ~10.5k msgs/s total sustained from a laptop against the
+serverless pool with zero lag; input rate was bounded by the laptop, not
+the pool.
+
+Post-storm validation: **all five checks green at full scale** — 299,690
+trade records (14,847 duplicates absorbed), 500 account+ticker keys and 10
+tickers recomputed from the raw topics, every position and market value
+exact to the cent. Same suite, same verdict as the Java pipeline.
+
+### AWS-comparison cases, re-run on Confluent
+
+**Case 1 — 1,000 trades/s sustained:** 997/s peak in, consumed 1:1, dedup
+absorbing the seeded 5% duplicates at full rate, MV output bounded (~52/s).
+Same verdict as AWS Case 1: order path flat, zero lag.
+
+**Case 2 — extreme price ($10^13/share) at 1,000 trades/s:** throughput
+identical to Case 1 (996/s, 1:1). Exactness spot-check across all 500
+account+ticker keys: **0 mismatches**; largest verified value
+234,520 shares × $10,000,000,000,000.00 = **$2,345,200,000,000,000,000.00
+exactly** — 19 significant digits, far beyond double precision. SQL
+`DECIMAL` passes the same test the Java `BigDecimal` passed (comparison
+scope: exact to the cent; ≤6 decimal places is the stated requirement).
+
+### AWS vs Confluent, in plain English
+
+How to read it: a *message* is one trade or one price update. Both clouds ran
+the same generator data and the same five correctness checks. Both scale by
+adding *processing units* (AWS: KPUs, Confluent: CFUs — each roughly one
+CPU's worth). On AWS you pick the number by hand; on Confluent you set a
+ceiling and it adds units by itself.
+
+| What we tested | AWS | Confluent Cloud | Verdict |
+|---|---|---|---|
+| Correctness — 5 checks recomputed from raw data | All passed | All passed | Identical, exact results on both |
+| Normal trading day — 1,000 trades/sec | Kept up, no delay | Kept up, no delay | Neither falls behind |
+| Ridiculous prices — $10 trillion/share | Exact to the cent | Exact to the cent (500 accounts, zero errors) | Money math never loses a cent on either |
+| Price storm — 10,000 price updates/sec | Absorbed by the 250 ms window; trades unaffected | Same: 10,000/sec in, ~10/sec out; trades unaffected | The bottleneck fix works identically |
+| Top speed | 110,000 msgs/sec on 12 hand-picked units | 132,000/sec capped at 10 units; **232,000/sec** capped at 20 (used 16) | Confluent processed 2× the AWS record; both runs ended because the test data ran out, not capacity |
+| How you turn it up | Edit one setting, redeploy | Raise one ceiling; it scales itself | Same dial — Confluent turns it for you |
+| The honest footnote | Data generated inside AWS at full speed | A laptop can't *send* 110k/sec, so we measured Confluent chewing through a 26M-message backlog | Confluent's number is proven processing speed; live feeding at that rate needs a cloud-based generator |
+
+### Monthly cost estimate, AWS vs Confluent (list prices, 24/7, ±30%)
+
+Built from measured footprints (≈100 B/message from the generator; KPU/CFU
+counts from the actual runs) and 2026 us-east-1 list prices: AWS Flink
+$0.11/KPU-hr (+1 orchestration KPU), MSK Serverless $0.75/cluster-hr +
+$0.0015/partition-hr + $0.10/GB in + $0.05/GB out; Confluent Flink
+$0.21/CFU-hr (actual use), Basic cluster $0 base + $0.014–0.05/GB network.
+No committed-use discounts; Confluent eCKU capacity rates vary by account.
+
+| Running 24/7 at… | AWS | Confluent | Where the money goes |
+|---|---|---|---|
+| Case 1 — 1,000 trades/s | ≈ $1,070/mo | ≈ $1,010/mo | AWS: fixed cluster base ($653). Confluent: 6-CFU statement floor ($920) |
+| Case 2 — 11k msgs/s storm | ≈ $1,470/mo | ≈ $1,500/mo | Parity; conflation is what keeps compute flat on both |
+| Case 3 — 110k msgs/s | ≈ $6,100/mo | ≈ $4,500/mo | Data transfer dominates: MSK ingest ~$2,900/mo alone; Confluent's cheaper network offsets pricier compute |
+
+One-line takeaway: parity at normal volumes; Confluent ~25% cheaper at
+sustained high volume on list price; on both clouds the big lever above
+~10k msgs/s is bytes on the wire (Avro/Protobuf would cut 3–5×), not
+compute. Sources: AWS Managed Flink pricing page, MSK Serverless pricing,
+Confluent Flink billing docs — links in the article/runbook; verify against
+your rate card before believing any single dollar.
+
+### Volume parity with MSK — the 110k msgs/s bar (measurement detail)
+
+No 110k/s live ingest from a laptop (AWS used an in-VPC Fargate generator),
+so capacity was measured the same way AWS saturation was: **backlog drain**.
+The cluster amplified its own price topic in-cloud to a 26.4M-record
+`prices-bulk` backlog (the four copy statements themselves sustained ~110k
+peak 190k msgs/s while doing it), then a fresh conflation-shaped statement
+consumed it from offset zero:
+
+| max_cfu | CFUs used (autoscaled) | sustained drain | peak minute | vs MSK finale (110k @ P=12) |
+|---|---|---|---|---|
+| 10 | 10 | 110.8k → 132.6k/s for 3 consecutive min | **132,613/s** | **1.2×** |
+| 20 | 16 (all it needed) | 138k → 232k/s | **232,703/s** | **2.1×** |
+
+Both runs ended **backlog-limited, not pool-limited**, with conflated
+output still bounded (~12/s) at full rate. Scaling ~linear: 1.6× the CFUs
+→ 1.75× the throughput — the CFU cap is the same dial `flink_parallelism`
+was, except the autoscaler turns it for you (the pool idled at 6 CFUs
+through every functional test and grabbed capacity only under the storm).
+Honest scope note: this proves *processing* capacity at MSK-finale volume
+on the same workload shape; live *ingest* at 110k/s would additionally
+need a cloud-side producer (Datagen connector or a Fargate task).
+
+Validation nuance found here: exactly-once sinks publish only at checkpoint
+commits, so "drained" means minutes, not seconds — early validation runs
+show stale-but-internally-consistent outputs that converge to green.
+Deployment story and gotchas (statement-name races, `IF NOT EXISTS`,
+the JDK 25 silent SASL failure): [CONFLUENT_RUNBOOK.md](CONFLUENT_RUNBOOK.md#gotchas-found-while-building--updated-as-deployment-proceeds).
+
 ## Capacity playbook (how to handle any volume)
 
 Measured capacity model: **~12k msgs/s per KPU** on this workload, linear to

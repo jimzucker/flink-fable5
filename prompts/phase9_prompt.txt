@@ -1,0 +1,146 @@
+Phase 9 — Confluent Cloud Edition (session 2026-08-02, Claude Code / Fable 5)
+=============================================================================
+
+PROMPT 9
+--------
+"what would it take to deploy on confluent cloud instead of on AWS, could the
+whole project be done on confluent cloud?" -> "can you create a plan to create
+a confluent cloud version with full deployment, keep what we have for AWS this
+should be in addition, lets track the above analysis as part of the plan,
+create the plan as a new phase and execute it"
+
+ANALYSIS (recorded per request)
+-------------------------------
+The feasibility question hinges on one fact: Confluent Cloud's managed Flink
+supports Flink SQL and the Table API (plus Java UDFs) only — it does NOT
+expose the DataStream API. Our pipeline is built entirely on DataStream
+primitives (KeyedProcessFunction, KeyedCoProcessFunction, hand-managed
+ValueState/MapState, TTL, processing-time timers). So Confluent Cloud is a
+re-implementation in Flink SQL, not a port of the jar.
+
+What maps cleanly:
+- Kafka: MSK Serverless -> Confluent Basic cluster; IAM auth -> API keys.
+  Topics, keyed upserts, validation-from-raw-topics: unchanged.
+- Dedup: standard SQL pattern, ROW_NUMBER() OVER (PARTITION BY trade_id) = 1.
+  TTL becomes statement-level state retention.
+- Positions: keyed SUM aggregation emitting upserts.
+- Market value: join latest price to positions; SQL DECIMAL replaces
+  long-cents + BigDecimal (exactness preserved).
+- Terraform: mature Confluent provider; the SQL lives in
+  confluent_flink_statement resources — arguably a better IaC story than
+  shipping a jar.
+- Generator: existing Java generator already passes through arbitrary
+  kafka.props.*, so it hits Confluent with SASL/PLAIN unchanged, run locally.
+  No ECS needed.
+
+What does not map (the interesting parts):
+1. The Phase 7 conflation fix. The 250 ms per-ticker timer is exactly what
+   DataStream gives you and SQL doesn't. SQL equivalent: a small tumbling
+   window on the price stream keeping the last price per ticker before the
+   join — same work reduction, same final-state semantics, different
+   mechanism.
+2. Custom metrics (demoDuplicatesDropped etc.) are gone — you get Confluent's
+   built-in metrics via their Metrics API only.
+3. The explicit parallelism dial. Compute pools autoscale by CFUs; you set a
+   max, not flink_parallelism = 12. The scaling story becomes "raise the CFU
+   cap, watch it absorb load" — measurable, but less surgical than the
+   P=2/4/8/12 ladder.
+
+Verdict: yes, the whole project can be done on Confluent Cloud as a SQL-first
+re-implementation (less code, fully managed, no jar, no VPC). The validation
+suite is the asset that makes the rewrite safe: it re-derives every output
+from the raw topics and doesn't care what produced them. Fitting close: the
+Phase 1 plan's open question #1 was "any preference for PyFlink or Flink SQL
+instead?" — Phase 9 answers it with both implementations, same tests.
+
+PLAN (Phase 9)
+--------------
+9.1 Record prompt + analysis (this file), extend PLAN.md.
+9.2 Flink SQL pipeline in confluent/sql/: source tables over the same JSON
+    topics; dedup; positions by account+ticker and by ticker; 250 ms price
+    conflation window; MV joins with exact DECIMAL math; upsert sinks with
+    the same JSON field names so the validation logic ports unchanged.
+9.3 Terraform root infra-confluent/ (fully separate from infra/):
+    environment, Basic Kafka cluster, 6 topics, service account + API keys,
+    Flink compute pool, one confluent_flink_statement per SQL file, outputs.
+9.4 Reuse the Java generator locally via config/confluent.properties
+    (SASL_SSL PLAIN through kafka.props.*); scripts/confluent_validate.py
+    (same 5 independent checks); scripts/confluent_perf_probe.py (Confluent
+    Metrics API).
+9.5 Deploy gate: needs a Confluent Cloud account + Cloud API key
+    (TF_VAR/env). terraform apply, run generator at baseline, all 5
+    validation checks green.
+9.6 Load test: ramp generator rates, stats after each rung, record in
+    docs/PERF_RESULTS.md.
+9.7 Docs: docs/CONFLUENT_RUNBOOK.md, README "Confluent Cloud edition"
+    section with the DataStream-vs-SQL comparison.
+9.8 Teardown (verify zeros), squash-merge to main, tag Phase-9.
+
+Review gates: (a) SQL + Terraform reviewed before apply; (b) validation green
+before load tests; (c) results reviewed before teardown.
+
+RESPONSE (summary of the execution)
+-----------------------------------
+Built on branch phase9-confluent: 8 raw-format tables + 6 SQL statements
+(confluent/sql/), Terraform root infra-confluent/ (env, Basic cluster, pool
+max_cfu=10, one confluent_flink_statement per SQL file), generator launcher,
+confluent_validate.py (same 5 checks), Metrics API perf probe.
+
+Deployment bumps, each found by verifying (the AWS Phase 8 story, new cloud):
+1. 402 Payment Required — account had no card on file; user added one.
+2. Statement-name 409 race: with a freshly minted Flink API key the
+   provider's first submit landed slowly, its retry hit "already exists",
+   8 statements left FAILED outside TF state (the Confluent twin of the MSF
+   tag race). Deleted via Flink REST API, re-applied.
+3. Statements != tables: deleting a statement does not drop its table, so
+   plain CREATE TABLE re-runs died on "table already exists". Fixed with
+   CREATE TABLE IF NOT EXISTS everywhere (better IaC anyway).
+4. JDK 25 silently breaks Flink 1.20's kafka-clients: SASL channel never
+   constructs (removed JAAS APIs), producer retries metadata forever,
+   NOP logger hides everything — generator ran 2.5 min delivering ZERO
+   records while python delivered instantly. Diagnosed with a send().get()
+   probe; fixed by pinning Java 17 in confluent_generator.sh.
+5. Exactly-once sinks publish at checkpoint commits: right after quiesce
+   the outputs are stale but internally consistent, converging to exact
+   over the next checkpoints. "Drained" = minutes, not seconds.
+
+VALIDATION: ALL 5 CHECKS GREEN (baseline 10+20/s: 1,590 trades, 63 dups
+absorbed, 50 account+ticker keys exact, MV exact decimals). One WARN by
+design: last 250 ms window can stay unclosed after quiesce (watermark
+stops), so the final conflated price may lag the final raw tick — the one
+honest semantic difference vs the Java timer.
+
+LOAD LADDER (laptop generator -> serverless pool, Metrics API, 6-min
+steady-state):
+  rung 1:  100 trades/s +   500 prices/s -> conflated ~10/s (~50x), 1:1
+  rung 2:  100 trades/s + 5,000 prices/s -> conflated ~10/s (~490x), 1:1
+  rung 3:  500 trades/s + 9,970 prices/s -> conflated ~10/s (~950x), 1:1
+Conflated output FLAT at ~10/s across a 20x storm — MV work is a function
+of tickers x windows, not tick rate. Order path untouched at every rung.
+~10.5k msgs/s total sustained; bounded by the laptop, not the pool.
+
+POST-STORM VALIDATION: ALL 5 CHECKS GREEN at full scale — 299,690 trades
+(14,847 dups absorbed), 500 account+ticker keys + 10 tickers recomputed
+from raw topics, every position and MV exact to the cent.
+
+FOLLOW-UP (user): "did we run all the same tests we ran on aws" ->
+"run case 1 and 2; we only care about comparing cents to 6 decimals; for
+case 3 how can we show the scaling?" -> "we need to show confluent cloud
+can handle the same volume as msk"
+
+CASE 1 (1,000 trades/s): 997/s peak, consumed 1:1, dedup at rate, MV
+bounded — same verdict as AWS.
+CASE 2 (price $10^13 at 1,000 trades/s): throughput unchanged; 500/500
+keys exact, largest MV $2,345,200,000,000,000,000.00 = 19 significant
+digits exact (0 mismatches).
+VOLUME PARITY (backlog-drain method, since a laptop can't ingest 110k/s):
+in-cloud amplification to 26.4M records (copies themselves hit 190k/s
+peak), then conflation-shaped drain from earliest:
+  max_cfu=10 -> 132,613/s peak, 3 consecutive min >= 110k  (1.2x MSK finale)
+  max_cfu=20 -> 232,703/s peak at 16 CFUs autoscaled       (2.1x MSK finale)
+Both backlog-limited, not pool-limited; ~linear scaling; pool idles at
+6 CFUs otherwise. Honest scope: processing capacity proven at volume;
+live ingest at 110k/s would need a cloud-side producer.
+
+Docs updated: PERF_RESULTS.md Phase 9 section, CONFLUENT_RUNBOOK.md
+(9 gotchas), README Confluent section + repo map.
