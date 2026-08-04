@@ -1,0 +1,50 @@
+Phase 11 — Confluent Rematch (session 2026-08-04, Claude Code / Fable 5)
+========================================================================
+
+PROMPT 11
+---------
+"what happened to the plan to attempt to tune/optimize the confluent
+version to see if it can come closer to the new AWS" -> "lets plan and
+execute phase 11"
+
+WHY (fairness gap found in review)
+----------------------------------
+Phase 10 tuned AWS against Confluent's 232.7k — but that Confluent number
+was itself probably not a ceiling:
+1. The drained topic (prices-bulk) had only 16 buckets while tuned AWS ran
+   48 partitions — Confluent's source parallelism was likely bucket-capped.
+2. The autoscaler used 16 of 20 CFUs — consistent with partition-bound,
+   not compute-bound.
+3. The emission-conflation trick (AWS Rung B, +36%) ports to SQL as
+   windowed last-row emission on the position statements.
+What Confluent likely cannot close: the unit-price gap ($0.21/CFU vs
+$0.11/KPU): cost-floor parity would need ~2x AWS's per-unit throughput.
+The project ethos caught ourselves: never compare one system's cruise to
+another's sprint — in either direction.
+
+PLAN
+----
+11.1 Redeploy infra-confluent (same TF, max_cfu=40).
+11.2 Seed via laptop generator (~10 min, ~6.6M records), then in-cloud
+     amplification into 48-bucket bulk topics: prices-bulk (~48M) and
+     trades-bulk (~5M) via 8 parallel copy statements each.
+11.3 Rematch A — conflation-drain ceiling on 48 buckets (direct rerun of
+     the 232.7k test, bucket cap removed).
+11.4 Rematch B — FULL-PIPELINE drain (the AWS-435k comparison Confluent
+     never got): a parallel set of bulk-sourced statements (dedup,
+     positions x2 with windowed 250ms emission conflation, MV joins x2)
+     reading the bulk topics from earliest; measure consumed rate.
+11.5 Report: tuned-vs-tuned symmetric table; peak, sustained, CFUs
+     actually used, $/hr, msgs/s per $/hr both clouds; cost to match each
+     other's peaks in both directions.
+11.6 Teardown + verify zeros; docs sync (PERF_RESULTS, README, article,
+     deck); merge phase10 then phase11 to main, tag Phase-10 + Phase-11.
+
+Review gates: plan (approved "lets plan and execute") -> rematch A result
+-> rematch B result -> verdict before teardown.
+
+Est. cost ~$5-8 (CFU-minutes during drains + Basic cluster data).
+
+RESULTS
+-------
+[executing]
