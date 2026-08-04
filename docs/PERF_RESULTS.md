@@ -553,6 +553,60 @@ is untested.
 a matched delivery guarantee; and the fused statement set's *throughput* was
 not measured, only its latency.
 
+## Phase 13 — CR-1: cadence capped to human reading speed (2026-08-04)
+
+A change request from measuring how fast people actually read: **positions at
+most once per key per 500 ms, market values at most once per 1000 ms**.
+Reading a formatted number takes 300–500 ms, so anything faster is
+unreadable shimmer — pure cost with negative user value. The cadences are
+harmonics of the existing 250 ms price conflation so windows nest cleanly.
+
+**AWS — satisfied by configuration, no latency penalty beyond the cap:**
+
+| Output | Measured updates/key/sec | Limit |
+|---|---|---|
+| positions by account+ticker | 0.96 | 2.0 ✅ |
+| positions by ticker | 1.24 | 2.0 ✅ |
+| market values by account+ticker | 0.96 | 1.0 ✅ |
+| market values by ticker | 0.89 | 1.0 ✅ |
+
+Latency under the cap: **p50 604 ms, p99 995 ms** — half the interval at the
+median, the full interval at p99, exactly what uniform arrivals in a fixed
+window produce. Correctness re-verified live: 53,001 market values re-checked
+as `net_qty × price`, zero mismatches.
+
+The implementation is better than a throttle: both inputs feed state and a
+single per-key timer decides when state reaches the output, so the emitted
+value is computed *at emit time* from the newest price and newest quantity.
+Nothing is computed that isn't emitted, and staleness never exceeds one
+interval. Cost: this supersedes the old "position updates emit immediately"
+guarantee — capping output rate necessarily delays position-driven updates
+too. `interval = 0` restores the previous behaviour.
+
+**Confluent — the requirement is not expressible.** Four mechanisms, all
+closed:
+
+| Mechanism | Result |
+|---|---|
+| `table.exec.mini-batch.*` — the idiomatic answer | **Not supported.** Confluent Cloud accepts seven statement options; none are `table.exec.*` |
+| `CUMULATE` windows | Opens `size ÷ step` windows **per key** — 1 day ÷ 0.5 s = 172,800. One output produced nothing; others starved to 0.22–0.29/key/s; latency p50 158–235 **seconds** |
+| `TUMBLE` over the aggregation | Rejected — aggregations emit updating streams, windowing needs append-only |
+| `TUMBLE` over the output topic (extra Kafka hop) | Rejected — `ChangelogNormalize` produces update/delete changes window dedup won't consume |
+
+The only untested route is making the intermediate topic append-only rather
+than upsert, which changes the output contract (consumers must dedupe) and
+still costs a Kafka hop.
+
+**Why this is the most consequential difference in the whole comparison.**
+Phases 11–12 framed the choice as a performance trade: DataStream faster,
+SQL simpler. CR-1 exposes a **capability gap**. A plain product requirement —
+"don't update the screen faster than a human can read" — is one config line
+on DataStream and has no supported construct on Confluent Cloud SQL for
+updating aggregations. The going-in hypothesis (both gated by the same
+delay, so the difference collapses) was wrong in an instructive way: the
+difference didn't shrink, it **changed kind** — from *how fast* to *whether
+you can do it at all*.
+
 ## Capacity playbook (how to handle any volume)
 
 Measured capacity model: **~12k msgs/s per KPU** on this workload, linear to
