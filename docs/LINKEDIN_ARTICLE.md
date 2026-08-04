@@ -59,16 +59,26 @@ torn down by evening. That's the quiet
 payoff of tests that re-derive truth from raw data: switching engines, or
 clouds, becomes an afternoon, not a quarter.
 
-**The Monday postscript: the rematch.** Confluent's 232,000/sec had beaten
-AWS's 110,000 — except it hadn't: AWS had been measured at cruising speed,
-Confluent at a sprint. Measured the same way, untuned AWS already averaged
-236,000/sec. Then the tuning your reviewer asks for — batch the sinks, pack
-the compute units, apply the same 250 ms window trick to *outputs* — took
-the identical hardware to 435,000/sec, and scaling *down* found the floor:
-**10 compute units matching Confluent's peak at about 40% less total
-infrastructure cost** — with doubling the units still doubling the
-throughput. Moral: never compare one system's cruise to another's sprint,
-and the cheapest capacity is the work you never do.
+**The Monday postscript: measuring it properly.** The first comparison had
+Confluent ahead — 232,000 messages/sec against AWS's 110,000. It was wrong,
+and not in Confluent's favor: I had measured AWS at cruising speed and
+Confluent at a sprint. Fixing that took four rounds of my own review
+catching my own mistakes — compare systems at the same operating point,
+count the whole infrastructure bill and not just compute, quote configs a
+person can actually deploy, and give each platform the same tuning
+courtesies. Every correction is in the repo.
+
+**What the honest scoreboard says.** AWS: 267 ms median latency, 435,000
+msgs/sec through the full pipeline, and 28 minutes at 232,705/sec with a
+standard deviation of *thirty*. Confluent: 33 seconds median latency,
+127,000 msgs/sec, at higher cost. But it took **200 lines of SQL instead of
+2,000 lines of Java**, with no jar, no VPC, and nothing to deploy. That's
+not one product beating another — it's the architecture showing through.
+One Flink job hands records between operators in memory; independent SQL
+statements hand them through Kafka, and every hop costs a write, a read,
+and a checkpoint. Sub-second work belongs on the first; anything that
+tolerates multi-second freshness gets built ten times faster on the second.
+The test suite that proved both versions correct never had to change.
 
 **github.com/jimzucker/flink-fable5**
 

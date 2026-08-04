@@ -1,4 +1,54 @@
-# Phase 6 — Performance & Scaling Validation (local)
+# Performance Results — the same trading pipeline on two clouds
+
+## Final scoreboard
+
+Both clouds run the same requirements, the same data, and are judged by the
+same five independent validation checks. Every number below was measured on a
+**deployable configuration** (real Terraform, real billed units) using the
+same method on both sides: pre-load a backlog, start the job from offset
+zero, measure the consumed rate. Latency is measured live, not from a drain.
+
+| | **AWS** — Managed Flink + MSK Serverless | **Confluent Cloud** — Flink SQL |
+|---|---|---|
+| **Correctness** (5 independent checks) | all pass, exact to the cent | all pass, exact to the cent |
+| **End-to-end latency**, live at 11k msgs/sec | **p50 267 ms · p99 495 ms** | p50 33.0 s · p99 44.2 s |
+| **Full pipeline throughput** (dedup + positions + market values) | **435,000 msgs/sec** | 127,000 msgs/sec |
+| **Single-stage ceiling** | 757,600 msgs/sec (20 KPUs) | 301,700 msgs/sec (deployable cap-20 pool) |
+| **Sustained live run**, 28 min | 232,705/sec, **σ = 30/sec**, zero restarts | 360,900/sec combined, σ = 63,900/sec |
+| **Cheapest config holding 232,700/sec** | **11 billed KPUs ≈ $2.39/hr all-in** | cap-20 pool ≈ $3.36/hr + usage |
+| **Scaling** | linear: 2× units → 2.0× throughput | flat vs units; scales with key cardinality |
+| **Recovery** | restored from snapshot under load; 198,313 outputs re-verified, 0 errors | statement stopped 30 s mid-flow, resumed with state |
+| **Code to build it** | ~2,000 lines of Java | **~200 lines of SQL** |
+| **What you operate** | a jar, an image, a VPC | statements — no jar, no VPC, no images |
+
+**The bottom line.** AWS is faster (124× lower latency, 3.4× the full-pipeline
+throughput), cheaper (~40% lower infrastructure cost at equal work), and
+steadier (near-zero jitter) — because one Flink job passes data between
+operators in memory. Confluent is dramatically simpler to build and operate —
+a tenth of the code and nothing to deploy — because each SQL statement is
+independent, which is also exactly why its data crosses Kafka between every
+step and its latency is measured in seconds.
+
+**Choose by workload, not by benchmark:** anything with a latency budget under
+a second, or sustained six-figure throughput, belongs on the DataStream side.
+Analytics, aggregations, and enrichment that tolerate multi-second freshness
+get built roughly ten times faster in SQL, and the validation suite proves the
+rewrite either way.
+
+*What this comparison does not cover: multi-region, message sizes other than
+~100-byte JSON, runs longer than 30 minutes, or binary serialization (Avro,
+worth an estimated 3-5× on both clouds, deliberately excluded so both sides
+paid the same JSON parsing tax).*
+
+---
+
+# How the numbers evolved (measurement history)
+
+The sections below are the working record, phase by phase — including the
+numbers that later corrections superseded. The scoreboard above is
+authoritative.
+
+## Phase 6 — Performance & Scaling Validation (local)
 
 Environment: Docker Compose on a MacBook (Apple Silicon), Flink 1.20 session
 cluster, 1 TaskManager × 4 slots, RocksDB state backend, 10s checkpoints.
@@ -363,6 +413,81 @@ Measurement notes for reproducers: CloudWatch merges MSF subtask series —
 multiply by parallelism and cross-check totals against known backlog
 counts; MSF metrics have a ~2-minute blind spot after job start, so size
 backlogs to outlast it.
+
+## Phase 11 — Confluent rematch: same courtesies, then the gaps closed (2026-08-04)
+
+Phase 10 tuned AWS against Confluent's 232.7k — but that number came from a
+**16-bucket** source while tuned AWS ran 48 partitions, and its autoscaler
+never reached its cap. Phase 11 gave Confluent the same treatment, then closed
+every remaining methodology gap on both clouds.
+
+**Removing the bucket cap (Rematch A, C, and the deployability audit):**
+
+| Config (48-bucket source) | Peak | CFUs elected |
+|---|---|---|
+| cap-40 pool | 287,000/sec | 16 |
+| cap-10 pool | 265,500/sec | 10 |
+| **cap-20 pool (the deployable claim config)** | **301,700/sec** | 10 |
+
++23% over the bucket-capped 232.7k — the old number *was* partition-bound.
+But the three runs also reveal something more useful: **throughput barely
+moves with CFUs** (265k on 10 vs 287k on 16). Confluent's compute dial
+saturates; a single statement has a ceiling that money doesn't move.
+
+**What actually moves it — key cardinality.** Same statement, same pool, only
+the symbol count changed: 10 symbols → 301,700/sec; **30 symbols →
+386,300/sec** (+28%). The window operator parallelizes across keys, so the
+ceiling is set by the key space, not the CFU count.
+
+**Sharding did not stack (Rematch D).** Two statements on two pools draining
+two disjoint half-topics simultaneously reached 235,700/sec combined — *less*
+than one statement on one pool. Splitting 10 symbols into 5+5 halved each
+shard's parallelism; the scale-out unit is only useful if the key space is
+wide enough to feed it.
+
+**Full pipeline, like for like (Rematch B).** All six statements running
+together (dedup, both position aggregations, conflation, both market-value
+joins) over the bulk topics: **127,000 msgs/sec sustained** at 15 CFUs — vs
+AWS's 435,000 for the same logical work. The gap is architectural: Confluent's
+statements hand off through Kafka (the dedup output is re-read four times),
+while AWS's operators pass records in memory inside one job.
+
+**Latency, measured live on both (the gap Phase 10 never closed).** Same probe,
+same method — output record timestamp minus source event time, 11k msgs/sec
+steady feed:
+
+| | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| **AWS** (incl. its 250 ms emission window) | **267 ms** | 453 ms | 495 ms | 1,058 ms |
+| **Confluent** (3-statement chain) | 33,029 ms | 41,217 ms | 44,213 ms | 47,225 ms |
+
+**124× apart.** Each Confluent hop pays a Kafka write, a read, and a
+checkpoint commit; AWS pays one in-memory handoff. This is the single most
+decision-relevant number in the whole comparison.
+
+**Stability, 28-minute sustained runs.** AWS at its floor config under a live
+110k/sec feed: mean 232,705/sec with a standard deviation of **30 msgs/sec**
+(0.01% jitter) and zero restarts. Confluent's self-sustaining ping-pong load:
+mean 360,900/sec, σ 63,900 — healthy, but visibly breathing as the autoscaler
+adjusts.
+
+**Recovery, both clouds.** AWS: graceful stop (snapshot) then restore under
+continuing load — after restart, 198,313 market-value records re-verified as
+`net_qty × price` exact, **zero mismatches**. Confluent: the dedup statement
+stopped 30 s mid-flow and resumed with state intact, then re-validated with
+the full five-check suite.
+
+**Variance, honestly bounded.** Confluent's ceiling across three runs: 265k /
+287k / 302k (±13%). AWS's floor across two runs: 352k / 344k (2% apart) — and
+the 8-KPU rung failed twice (199k, 220k), confirming the floor is 10 KPUs, not
+8, outside any variance explanation.
+
+**Deployability audit.** Every scoreboard claim maps to a config you can
+actually deploy: AWS quotes **11 billed KPUs** (10 processing + the
+orchestration KPU that Managed Flink always adds); Confluent quotes a
+**cap-20 pool**, because `max_cfu` only accepts {5,10,20,30,40,50} and can
+never be lowered on an existing pool — "16 CFUs" was never a config anyone
+could buy.
 
 ## Capacity playbook (how to handle any volume)
 
