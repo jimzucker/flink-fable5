@@ -90,6 +90,17 @@ public final class DataGenerator {
                     params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
                     params.get("topic.mv.ticker", "mv-by-ticker"));
             try (AdminClient admin = AdminClient.create(adminProps)) {
+                if (params.getBoolean("topics.recreate", false)) {
+                    try {
+                        admin.deleteTopics(topics).all().get();
+                        System.out.println("generator: deleted topics for clean recreate");
+                        Thread.sleep(10_000); // let deletion propagate before recreate
+                    } catch (ExecutionException e) {
+                        if (!(e.getCause() instanceof org.apache.kafka.common.errors.UnknownTopicOrPartitionException)) {
+                            throw e;
+                        }
+                    }
+                }
                 for (String topic : topics) {
                     try {
                         admin.createTopics(List.of(
@@ -98,6 +109,17 @@ public final class DataGenerator {
                     } catch (ExecutionException e) {
                         if (!(e.getCause() instanceof TopicExistsException)) {
                             throw e;
+                        }
+                        // Existing topic: grow to the requested partition count if smaller
+                        // (partitions can only increase in Kafka; shrink is ignored).
+                        int current = admin.describeTopics(List.of(topic)).allTopicNames().get()
+                                .get(topic).partitions().size();
+                        if (current < partitions) {
+                            admin.createPartitions(
+                                    java.util.Map.of(topic, org.apache.kafka.clients.admin.NewPartitions
+                                            .increaseTo(partitions))).all().get();
+                            System.out.println("generator: grew topic " + topic
+                                    + " " + current + " -> " + partitions + " partitions");
                         }
                     }
                 }

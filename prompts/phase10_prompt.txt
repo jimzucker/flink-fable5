@@ -50,6 +50,34 @@ PLAN
 Review gates: plan (approved "go ahead") -> baseline result before config
 changes -> Rung A result before code changes -> results before teardown.
 
+FOLLOW-UP (user, mid-phase): "we should tune and see the max we can get out
+of the P=12" -> "lets do all the tuning then prove the lowest cost where
+aws can match the confluent test at peak"
+Refined goal: after tuning, walk KPUs DOWN (12 -> 8 -> 6) and find the
+cheapest config that still sustains >= 232.7k msgs/s full-pipeline drain.
+
+RESULTS SO FAR
+--------------
+10.1 BASELINE (P=12, 12 KPUs, untuned, 136M-record drain, zero restarts):
+  peak minute 483,082 msgs/s (2.1x Confluent's 232.7k); whole-drain avg
+  ~236k; 4 consecutive minutes >= 232k; full-pipeline (both topics
+  draining) phase ~210-255k; totals cross-checked exactly (138M vs 136M).
+  12 KPUs $1.43/hr vs Confluent 16 CFUs $3.36/hr -> ~4.9x throughput/$.
+  ANSWER to the phase question: zero extra KPUs needed. Phase 8's 110k was
+  never a ceiling — generator-fed at 52% busy.
+  Measurement lesson re-learned: CloudWatch merges subtasks into one
+  series; rate = series value x parallelism (validated exactly against
+  generator counts, twice).
+  First drain attempt had 6 restarts (startup transients) and an
+  undersized backlog — thrown out, re-run clean.
+
+New deployment gotchas (for the runbook):
+  - Partial terraform apply race: MSF app update failed (FORCE_STOPPING)
+    AFTER ECS task-def/service updated -> a task launched with stale args.
+  - Generator IAM needed kafka-cluster:DeleteTopic + AlterTopic for the
+    new topics.recreate / partition-grow support.
+
 RESPONSE (summary — updated as the phase executes)
 --------------------------------------------------
-[in progress]
+[Rung A in progress: P=24 on the same 12 KPUs (ppkpu=2), 48 partitions,
+sink batching linger=25ms/batch=256KB/lz4; fresh 48-partition preload]

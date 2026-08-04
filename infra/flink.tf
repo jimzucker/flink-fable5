@@ -71,7 +71,8 @@ resource "aws_kinesisanalyticsv2_application" "this" {
             "checkpoint.interval.ms"  = "10000"
             "dedup.state.ttl.ms"      = "3600000"
           },
-          local.msk_iam_props
+          local.msk_iam_props,
+          { for k, v in var.kafka_extra_props : "kafka.props.${k}" => v }
         )
       }
     }

@@ -68,6 +68,10 @@ public final class AppConfig implements Serializable {
         return has(key) ? Double.parseDouble(props.getProperty(key).trim()) : defaultValue;
     }
 
+    public boolean getBoolean(String key, boolean defaultValue) {
+        return has(key) ? Boolean.parseBoolean(props.getProperty(key).trim()) : defaultValue;
+    }
+
     /**
      * Passthrough Kafka client properties: every `kafka.props.<x>=<v>` config entry
      * becomes `<x>=<v>` on the consumer/producer — how MSK IAM auth (SASL_SSL etc.)
