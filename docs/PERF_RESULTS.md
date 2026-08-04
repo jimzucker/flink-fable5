@@ -11,7 +11,7 @@ zero, measure the consumed rate. Latency is measured live, not from a drain.
 | | **AWS** — Managed Flink + MSK Serverless | **Confluent Cloud** — Flink SQL |
 |---|---|---|
 | **Correctness** (5 independent checks) | all pass, exact to the cent | all pass, exact to the cent |
-| **End-to-end latency**, live at 11k msgs/sec | **p50 267 ms · p99 495 ms** | p50 33.0 s · p99 44.2 s |
+| **End-to-end latency**, live at 11k msgs/sec | **p50 267 ms · p99 495 ms** | **p50 1.8 s · p99 2.1 s** (SQL written for latency) |
 | **Full pipeline throughput** (dedup + positions + market values) | **435,000 msgs/sec** | 127,000 msgs/sec |
 | **Single-stage ceiling** | 757,600 msgs/sec (20 KPUs) | 301,700 msgs/sec (deployable cap-20 pool) |
 | **Sustained live run**, 28 min | 232,705/sec, **σ = 30/sec**, zero restarts | 360,900/sec combined, σ = 63,900/sec |
@@ -21,19 +21,28 @@ zero, measure the consumed rate. Latency is measured live, not from a drain.
 | **Code to build it** | ~2,000 lines of Java | **~200 lines of SQL** |
 | **What you operate** | a jar, an image, a VPC | statements — no jar, no VPC, no images |
 
-**The bottom line.** AWS is faster (124× lower latency, 3.4× the full-pipeline
-throughput), cheaper (~40% lower infrastructure cost at equal work), and
-steadier (near-zero jitter) — because one Flink job passes data between
-operators in memory. Confluent is dramatically simpler to build and operate —
-a tenth of the code and nothing to deploy — because each SQL statement is
-independent, which is also exactly why its data crosses Kafka between every
-step and its latency is measured in seconds.
+**The bottom line.** DataStream is ~7× faster on median latency and ~3.4× on
+full-pipeline throughput, for ~40% less infrastructure cost. SQL costs a tenth
+of the code and has nothing to deploy. Both produce identical, exact results.
 
-**Choose by workload, not by benchmark:** anything with a latency budget under
-a second, or sustained six-figure throughput, belongs on the DataStream side.
-Analytics, aggregations, and enrichment that tolerate multi-second freshness
-get built roughly ten times faster in SQL, and the validation suite proves the
-rewrite either way.
+**An earlier version of this page claimed 124×. That was wrong, and the
+correction is the most useful thing we learned.** The first SQL
+implementation mirrored the Java topology one-operator-per-statement, so
+every stage handed off through a Kafka topic — six jobs, two intermediate
+topics, a checkpoint commit at every hop. Rewriting the *same logic* as one
+fused statement set took p50 from 26.7 s to **1.8 s** and p99 from 55 s to
+**2.1 s**. Roughly 15× of the original "architectural" gap was a translation
+choice; only ~7× is real. Details: Phase 12 below.
+
+**What still separates them** is mostly delivery semantics, not language: our
+DataStream job publishes immediately (`AT_LEAST_ONCE`), while Confluent Cloud
+Flink commits transactionally at checkpoints. Configured alike, they would
+converge further — that comparison is untested and is listed as an open gap.
+
+**Choose by latency budget:** sub-second requirements belong on DataStream.
+Anything tolerating a couple of seconds gets built roughly ten times faster in
+SQL — but write it as one fused statement set, not as a chain of statements,
+or you will pay 15× for the privilege.
 
 *What this comparison does not cover: multi-region, message sizes other than
 ~100-byte JSON, runs longer than 30 minutes, or binary serialization (Avro,
@@ -488,6 +497,61 @@ orchestration KPU that Managed Flink always adds); Confluent quotes a
 **cap-20 pool**, because `max_cfu` only accepts {5,10,20,30,40,50} and can
 never be lowered on an existing pool — "16 CFUs" was never a config anyone
 could buy.
+
+## Phase 12 — How close can SQL get to DataStream? (2026-08-04)
+
+Phase 11's 124× latency figure compared a **fused DataStream job** against
+**six independent SQL statements chained through Kafka**. That is a topology
+choice, not a language limit — so Phase 12 rewrote the same logic three ways
+and measured each on a live 11k msgs/sec feed.
+
+**The diagnostic that redirected the whole phase.** Measuring two output
+topics instead of one immediately killed my leading hypothesis (watermark
+idleness):
+
+| Path | Window? | p50 |
+|---|---|---|
+| `position-by-account-ticker` | none | 14,415 ms |
+| `mv-by-account-ticker` | tumbling + join | 26,687 ms |
+
+The path with **no window and no watermark dependency** was still 14 s — so
+~14 s was the two-statement chain itself (~7 s per Kafka hop, matching
+checkpoint-commit publishing), and the window added ~12 s on top.
+
+**The ladder:**
+
+| Configuration | positions p50 | MV p50 | MV p99 |
+|---|---|---|---|
+| Baseline — 6 statements, mirrors the Java topology | 14,415 ms | 26,687 ms | 55,511 ms |
+| Inline CTEs — 4 jobs, zero intermediate topics | 1,974 ms | 1,878 ms | 24,649 ms |
+| **`EXECUTE STATEMENT SET` — one fused job** | **1,817 ms** | **1,808 ms** | **2,105 ms** |
+| *DataStream reference (AWS)* | *~267 ms, estimated* | *267 ms* | *495 ms* |
+
+Inlining the intermediate topics bought **7–14× on the median**. Fusing into
+one job barely moved the median but collapsed the **tail 11.7×** (MV p99
+24.6 s → 2.1 s) — removing checkpoint-gated hops matters most for the worst
+case, which is usually what a latency SLO is written against.
+
+**What the residual ~1.8 s is — and isn't.** It is not the window: the
+no-window path (1,817 ms) and the windowed path (1,808 ms) came out
+identical. The likely cause is delivery semantics — our DataStream job runs
+`AT_LEAST_ONCE` and publishes immediately, while Confluent Cloud Flink
+commits transactionally at checkpoints. Matching the guarantees on both sides
+is untested.
+
+**Two SQL findings worth keeping:**
+- `TUMBLE` replaces `$rowtime` with `window_time`, so a downstream
+  deduplication cannot `ORDER BY $rowtime` — thread `window_time` through by
+  hand. Needing a fresh `$rowtime` is exactly *why* the naive translation
+  reaches for an intermediate topic.
+- A statement still catching up reports its **backlog age, not its latency**.
+  One probe read 170 s until the job reached the head. Verify lag ≈ 0 before
+  believing any latency number.
+
+**Open gaps, stated plainly:** AWS's positions-path latency was never measured
+(only MV — the ~267 ms is an estimate by analogy); neither stack was re-run at
+a matched delivery guarantee; and the fused statement set's *throughput* was
+not measured, only its latency.
 
 ## Capacity playbook (how to handle any volume)
 
