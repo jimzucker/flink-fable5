@@ -269,11 +269,12 @@ table(s, [
     ["Cost at equal work", "~ $2.39/hr all-in", "~ $3.36/hr + usage"],
     ["Code to build it", "~2,000 lines of Java", "~200 lines of SQL"],
     ["What you operate", "a jar, an image, a VPC", "statements - nothing to deploy"],
+    ["Rate-limit an output (CR-1)", "config change - 0.96/key/sec vs 1.0 cap", "NOT EXPRESSIBLE for updating aggregations"],
 ], 0.7, 1.8, 12.0, [4.2, 3.9, 3.9], size=13)
 bullets(s, [
     ("AWS is faster, cheaper and steadier: one job passes records between operators in memory", 0, GREEN, True),
     ("Confluent is ~10x less code and nothing to deploy - but the SQL must be ONE fused statement set; writing it as chained statements costs 15x latency (26.7s -> 1.8s when fixed)", 0, DARK, False),
-    ("Decide by latency budget, not by benchmark: sub-second -> DataStream; multi-second-tolerant analytics -> SQL", 0, DARK, True),
+    ("The deciding factor was not speed: a plain requirement - do not update the screen faster than a human can read - is one config line on DataStream and has no supported construct in Confluent SQL", 0, ACCENT, True),
 ], y=5.9, size=15, gap=9)
 
 # ---------------- Slide 8: Production path ----------------
@@ -316,7 +317,7 @@ bullets(s, [
 s = slide()
 title(s, "Recommendations & next steps")
 bullets(s, [
-    ("Two validated deployment targets: AWS Managed Flink for latency-critical and high-volume work; Confluent Cloud SQL where multi-second freshness is fine and speed-to-build wins", 0, DARK, True),
+    ("Recommend AWS Managed Flink for this product: it is faster, cheaper at equal work, and the only one of the two that can satisfy the output-cadence requirement (CR-1)", 0, DARK, True),
     ("Volume and stability proven on both, same method: AWS 757k msgs/sec peak, 28 min at 232,705/sec with deviation of 30; Confluent 386k peak single-statement", 0, DARK, False),
     ("Team walkthrough: live dashboard + 'explain the numbers' script are ready (docs/PERF_RESULTS.md)", 0, DARK, False),
     ("Candidate hardening for production: schema registry, DLQ for malformed records, autoscaling policy, CI pipeline", 0, DARK, False),

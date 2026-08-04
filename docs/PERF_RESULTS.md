@@ -20,6 +20,7 @@ zero, measure the consumed rate. Latency is measured live, not from a drain.
 | **Recovery** | restored from snapshot under load; 198,313 outputs re-verified, 0 errors | statement stopped 30 s mid-flow, resumed with state |
 | **Code to build it** | ~2,000 lines of Java | **~200 lines of SQL** |
 | **What you operate** | a jar, an image, a VPC | statements — no jar, no VPC, no images |
+| **Rate-limit an output** (CR-1) | **config change** — 0.96/key/sec vs a 1.0 ceiling | **not expressible** for updating aggregations |
 
 **The bottom line.** DataStream is ~7× faster on median latency and ~3.4× on
 full-pipeline throughput, for ~40% less infrastructure cost. SQL costs a tenth

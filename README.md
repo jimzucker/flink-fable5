@@ -24,6 +24,7 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Built twice, on two clouds, judged by one test suite** | Same pipeline re-implemented in ~200 lines of Flink SQL on Confluent Cloud — same 5 checks pass, exact to the cent ([Confluent edition](docs/CONFLUENT_RUNBOOK.md)) |
 | **Measured head-to-head, deployable configs only** | AWS: p50 **267 ms**, 435k msgs/s full pipeline, ~$2.39/hr. Confluent SQL written for latency: p50 **1.8 s**, ~$3.36/hr — a tenth of the code, nothing to deploy ([full scoreboard](docs/PERF_RESULTS.md#final-scoreboard)) |
 | **How you write the SQL is worth 15×** | The same logic as 6 chained statements vs one fused `STATEMENT SET`: p50 26.7 s → **1.8 s**, p99 55 s → **2.1 s**. Most of the "language gap" was a translation choice ([Phase 12](docs/PERF_RESULTS.md)) |
+| **A product requirement found the real gap** | CR-1 caps outputs at human reading speed (positions ≤2/sec, market values ≤1/sec). AWS: a config change — 0.96/key/sec measured, p50 604 ms, 53,001 values re-verified exact. Confluent: **not expressible** for updating aggregations — mini-batch unsupported, `CUMULATE` opens 172,800 windows/key, both `TUMBLE` routes rejected ([Phase 13](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 

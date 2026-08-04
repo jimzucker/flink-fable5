@@ -71,17 +71,31 @@ safety-versus-speed setting, and I had them set differently on each side
 without noticing. I never re-ran them matched, so I can say it explains most
 of the remaining gap, not that I proved it.
 
-**Where that leaves the choice.** DataStream is faster and cheaper, and
-sub-second budgets belong there. SQL costs a tenth of the code with nothing
-to deploy, and is the right answer whenever a couple of seconds is fine —
-provided you write it as one fused job, because writing it as a chain of
-statements is a 15× mistake hiding in plain sight. Both produced identical
-results, every time.
+**Then a product requirement settled it better than any benchmark had.**
+A number on a screen takes 300–500 milliseconds to read, so anything
+updating faster is unreadable shimmer — cost with negative value. I capped
+the outputs accordingly: positions at most twice a second, market values
+once. On the Java side that was a configuration change, and it measured
+exactly as designed: 0.96 updates per key per second against a ceiling of
+one, median latency 604 milliseconds, and 53,001 values re-checked to the
+cent. On the SQL side I could not express it at all. The idiomatic
+mechanism isn't exposed on that platform; the windowing alternative opened
+172,800 windows per key and starved the outputs to a fraction of the rate I
+was trying to allow; two further routes were rejected outright.
+
+I had spent three days arguing about how fast each one was. What actually
+decided it was whether either could do what the product asked.
+
+**So: DataStream where latency or control matter — and it's cheaper too.
+SQL where a couple of seconds is fine and speed-to-build wins, provided you
+write it as one fused job rather than a chain of statements, which is a 15×
+mistake hiding in plain sight.** Both produced identical results, every time.
 
 The lesson I'd keep isn't about either product. **Benchmarks mostly measure
-the person running them.** Mine only got trustworthy because a reviewer kept
-asking what else was different — and because a test suite that re-derives
-truth from raw data made every re-measurement cheap.
+the person running them** — and sometimes they measure the wrong thing
+entirely. Mine only became trustworthy because a reviewer kept asking what
+else was different, and because a test suite that re-derives truth from raw
+data made every re-measurement cheap enough to bother with.
 
 **github.com/jimzucker/flink-fable5**
 
