@@ -60,10 +60,16 @@ ignored the rest of the bill. I cited a configuration nobody could actually
 deploy. And the worst one: I reported SQL as 124× slower on latency, when
 what I had really measured was my own translation — I had written one SQL
 statement per Java operator, so every stage handed off through a Kafka
-topic. Rewritten as a single fused statement set, the identical logic went
-from 26.7 seconds to **1.8**, and the tail from 55 seconds to **2.1**. The
-honest gap is about 7×, and most of what remains is a delivery-guarantee
-difference, not a language one.
+topic. Rewritten as a single job, the identical logic went from 26.7 seconds
+to **1.8**, and the worst case from 55 seconds to **2.1**.
+
+So the real gap is about seven times, not a hundred — and even that isn't
+really about SQL. The Java version writes each result the instant it is
+computed; the SQL version holds results and publishes them together at its
+next safety checkpoint, a couple of seconds apart. That is a
+safety-versus-speed setting, and I had them set differently on each side
+without noticing. I never re-ran them matched, so I can say it explains most
+of the remaining gap, not that I proved it.
 
 **Where that leaves the choice.** DataStream is faster and cheaper, and
 sub-second budgets belong there. SQL costs a tenth of the code with nothing
