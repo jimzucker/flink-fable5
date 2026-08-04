@@ -17,12 +17,22 @@ import org.apache.flink.util.Collector;
 /**
  * Enrichment join keyed by ticker: latest price x per-account positions.
  *
- * A position update re-values that account IMMEDIATELY — the order path never
- * waits. Price-driven re-valuation is CONFLATED: each tick stores the latest
- * price, and a per-ticker processing-time timer re-values every holder at most
- * once per revalIntervalMs, absorbing intermediate ticks (demoTicksConflated).
- * This bounds price-driven work at holders x (1000/interval) per ticker/sec
- * regardless of tick rate. revalIntervalMs <= 0 restores per-tick behavior.
+ * Both inputs feed state; a single per-ticker processing-time timer decides
+ * when that state reaches the output. Each price tick stores the latest price;
+ * each position update stores the latest quantity; on the timer every holder
+ * is re-valued once from the newest of both and emitted.
+ *
+ * That single timer serves two purposes at once (CR-1): it bounds price-driven
+ * work at holders x (1000/interval) per ticker/sec regardless of tick rate,
+ * AND it caps the output cadence at one update per account+ticker per
+ * interval. Because the re-valuation happens AT emit time rather than being
+ * computed early and held, the emitted value is always the freshest available
+ * — max staleness is one interval, with no wasted intermediate re-valuations.
+ *
+ * intervalMs <= 0 restores per-event behaviour (lowest latency, unbounded
+ * output rate). Note this supersedes the earlier "position updates emit
+ * immediately" behaviour: under CR-1 a capped output rate necessarily delays
+ * position-driven updates too, which is the trade the requirement asks for.
  *
  * Final state after quiesce is unchanged: position x latest price.
  */
@@ -56,8 +66,24 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
     public void processElement1(Position position, Context ctx, Collector<MarketValue> out) throws Exception {
         qtyByAccount.put(position.account, position.netQty);
         Long price = lastPriceCents.value();
-        if (price != null) {
+        if (price == null) {
+            return;
+        }
+        if (revalIntervalMs <= 0) {
             out.collect(MarketValue.of(position.account, position.ticker, position.netQty, price, position.asOf));
+            return;
+        }
+        scheduleEmit(ctx);
+    }
+
+    /** Ensure exactly one pending timer per key, so emission is capped per interval. */
+    private void scheduleEmit(Context ctx) throws Exception {
+        if (revalPending.value() == null) {
+            revalPending.update(true);
+            ctx.timerService().registerProcessingTimeTimer(
+                    ctx.timerService().currentProcessingTime() + revalIntervalMs);
+        } else {
+            ticksConflated.inc();
         }
     }
 
@@ -69,13 +95,7 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
             revalueAll(price.symbol, out);
             return;
         }
-        if (revalPending.value() == null) {
-            revalPending.update(true);
-            ctx.timerService().registerProcessingTimeTimer(
-                    ctx.timerService().currentProcessingTime() + revalIntervalMs);
-        } else {
-            ticksConflated.inc();
-        }
+        scheduleEmit(ctx);
     }
 
     @Override

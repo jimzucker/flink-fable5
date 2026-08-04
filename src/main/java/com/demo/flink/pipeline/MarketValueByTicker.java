@@ -43,8 +43,24 @@ public class MarketValueByTicker extends KeyedCoProcessFunction<String, TickerPo
     public void processElement1(TickerPosition position, Context ctx, Collector<MarketValue> out) throws Exception {
         netQty.update(position.netQty);
         Long price = lastPriceCents.value();
-        if (price != null) {
+        if (price == null) {
+            return;
+        }
+        if (revalIntervalMs <= 0) {
             out.collect(MarketValue.of(null, position.ticker, position.netQty, price, position.asOf));
+            return;
+        }
+        scheduleEmit(ctx);
+    }
+
+    /** One pending timer per key: both inputs feed state, the timer caps output rate (CR-1). */
+    private void scheduleEmit(Context ctx) throws Exception {
+        if (revalPending.value() == null) {
+            revalPending.update(true);
+            ctx.timerService().registerProcessingTimeTimer(
+                    ctx.timerService().currentProcessingTime() + revalIntervalMs);
+        } else {
+            ticksConflated.inc();
         }
     }
 
@@ -56,13 +72,7 @@ public class MarketValueByTicker extends KeyedCoProcessFunction<String, TickerPo
             revalue(price.symbol, out);
             return;
         }
-        if (revalPending.value() == null) {
-            revalPending.update(true);
-            ctx.timerService().registerProcessingTimeTimer(
-                    ctx.timerService().currentProcessingTime() + revalIntervalMs);
-        } else {
-            ticksConflated.inc();
-        }
+        scheduleEmit(ctx);
     }
 
     @Override

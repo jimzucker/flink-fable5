@@ -57,15 +57,37 @@ class ConflationTest {
         }
     }
 
+    /**
+     * CR-1 changed this contract deliberately, so the test now pins the trade
+     * rather than the old guarantee. Before CR-1 a position update re-valued
+     * immediately even with a price timer pending; capping the output rate
+     * necessarily delays position-driven updates too. What must NOT change is
+     * that the delayed emission carries the newest quantity.
+     */
     @Test
-    void positionUpdatesEmitImmediatelyEvenWithTimerPending() throws Exception {
+    void withCappedCadence_positionUpdateWaitsForTheTimerButCarriesNewestQty() throws Exception {
         try (var h = harness(INTERVAL)) {
             h.setProcessingTime(0);
             h.processElement2(new StreamRecord<>(new PriceCents("AAPL", 15_000, 1000)));
-            // timer now pending; the order path must not wait for it
+            h.processElement1(new StreamRecord<>(new Position("ACC-001", "AAPL", 100, 2000)));
+            assertEquals(0, h.extractOutputValues().size(),
+                    "CR-1: output is capped, so the position update waits for the interval");
+
+            h.setProcessingTime(INTERVAL + 1);
+            List<MarketValue> out = h.extractOutputValues();
+            assertEquals(1, out.size(), "one update per key per interval");
+            assertEquals("15000.00", out.get(0).mv, "and it carries the newest quantity x newest price");
+        }
+    }
+
+    /** The pre-CR-1 low-latency behaviour is still available as configuration. */
+    @Test
+    void withCadenceDisabled_positionUpdatesStillEmitImmediately() throws Exception {
+        try (var h = harness(0L)) {
+            h.processElement2(new StreamRecord<>(new PriceCents("AAPL", 15_000, 1000)));
             h.processElement1(new StreamRecord<>(new Position("ACC-001", "AAPL", 100, 2000)));
             List<MarketValue> out = h.extractOutputValues();
-            assertEquals(1, out.size(), "position-driven MV is immediate");
+            assertEquals(1, out.size(), "interval 0 restores immediate position-driven MV");
             assertEquals("15000.00", out.get(0).mv);
         }
     }

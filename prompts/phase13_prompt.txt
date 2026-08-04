@@ -1,0 +1,145 @@
+Phase 13 — CR-1: cadence capped to human reading speed (plan, 2026-08-04)
+=========================================================================
+
+PROMPT 13
+---------
+"how fast can a human detect updates on a screen" -> "for numbers on the
+screen how fast should they change so they have time to read them" -> "what
+if we change the requirement to not update positions more frequently than
+once every 500ms (keeping in mind window lines) and not update market values
+faster than 1 second, how would you summarize this requirement, add it as a
+CR to requirements doc and make a plan to change both pipelines and retest
+to see then what the diff is between aws and confluent?"
+
+THE REQUIREMENT (recorded as CR-1 in Requirements.txt)
+-------------------------------------------------------
+Positions <= 1 update per key per 500 ms; market values <= 1 per key per
+1000 ms. Ceilings on OUTPUT rate only — each emission must carry the LATEST
+state at emit time, not a stale snapshot. Cadences are harmonics of the
+existing 250 ms price conflation (250 -> 500 -> 1000) so windows nest and no
+output interval straddles a partial input interval.
+
+WHY THIS IS INTERESTING BEYOND THE UX
+--------------------------------------
+Phases 11-12 measured AWS p50 267 ms vs Confluent p50 1.8 s. Under CR-1 both
+are gated by the SAME deliberate delay (500 ms / 1000 ms), so the platform
+difference should largely COLLAPSE — the throttle dominates. Hypothesis to
+test: once the requirement matches human perception, the choice between
+DataStream and SQL stops being a latency decision for this use case and
+becomes a cost/simplicity decision. If true, that is the most decision-useful
+finding of the whole comparison.
+
+DESIGN — AWS (DataStream)
+--------------------------
+Already has the mechanism (emit.interval.ms, Phase 10). Changes:
+  - Split the single knob into position.emit.interval.ms (500) and
+    mv.emit.interval.ms (1000); keep 0 = per-event for the latency mode.
+  - Market value: MERGE the reval timer and the emit timer into ONE 1000 ms
+    timer. Today prices are re-valued every 250 ms and emitted per update;
+    under CR-1 recomputing 4x per emission is wasted work. Store the latest
+    price on every tick (already done), then on the 1000 ms timer recompute
+    from the stored latest price and emit once. One compute per key per
+    second, freshest possible price, max staleness = 1 s. Strictly better
+    than throttling emission after a 250 ms reval.
+  - Positions: existing per-key emission timer, interval 500 ms.
+  - Unit tests: extend ConflatedEmissionTest for the two intervals and add
+    an MV emission test (N price ticks + M position updates inside one
+    interval => exactly ONE output carrying the final values).
+
+DESIGN — Confluent (SQL)
+-------------------------
+The naive route (throttle after a GROUP BY) does not work: aggregations emit
+an UPDATING stream and TUMBLE requires append-only — the Phase 9 wall.
+Use CUMULATE instead, which is built for exactly this:
+    CUMULATE(TABLE t, DESCRIPTOR(`$rowtime`), INTERVAL '500' MILLISECOND,
+             INTERVAL '1' DAY)
+gives a RUNNING total from the start of the window emitted once per step —
+which IS a position (daily reset is correct for trading). So:
+  - Positions: CUMULATE step 500 ms, size 1 day, over deduped trades.
+  - Market values: CUMULATE step 1000 ms for the position side, joined to
+    the conflated latest price.
+  - Keep everything in ONE fused EXECUTE STATEMENT SET (Phase 12 lesson).
+Note: CR-1 makes the SQL implementation MORE natural, not less — CUMULATE is
+the idiomatic construct for "running total, emitted on a cadence".
+
+TEST PLAN (same method both clouds)
+------------------------------------
+13.1 Deploy both with CR-1 cadences.
+13.2 CADENCE COMPLIANCE (the new acceptance test): consume each output topic
+     and measure updates per key per second. Pass = <= 2/s positions,
+     <= 1/s MV. New script: scripts/cadence_check.py (works on both clouds,
+     same as the validation suite does).
+13.3 LATENCY under CR-1: same LatencyProbe, both clouds, both topics.
+     Expected ~ throttle + pipeline; the AWS/Confluent delta should shrink
+     sharply vs Phase 12.
+13.4 OUTPUT VOLUME: records/sec written to the four output topics, before
+     vs after. This is the cost win — fewer writes, less egress, smaller
+     downstream load.
+13.5 CORRECTNESS: the existing 5-check validation suite, UNCHANGED, must
+     pass on both. (Final state is unaffected by emission cadence — same
+     argument as Phase 7.)
+13.6 THROUGHPUT spot-check: confirm the cadence cap does not reduce ingest
+     capacity (it should raise it — less sink work).
+13.7 Verdict table: AWS vs Confluent under CR-1 on latency, cadence
+     compliance, output volume, cost. Then teardown (standing order),
+     docs updated, merge, tag Phase-13.
+
+Est. ~1.5-2 h, ~$10-15 across both clouds.
+
+REVIEW GATE: this plan, before any deployment.
+
+RESULTS — the biggest platform difference found in the whole project
+---------------------------------------------------------------------
+AWS: CR-1 SATISFIED, config-only, all four outputs PASS.
+  position-by-account-ticker  0.96 updates/key/sec  (limit 2.0)  PASS
+  position-by-ticker          1.24                  (limit 2.0)  PASS
+  mv-by-account-ticker        0.96                  (limit 1.0)  PASS
+  mv-by-ticker                0.89                  (limit 1.0)  PASS
+  MV sits just under 1.0/key/sec exactly as the timer dictates. Implemented
+  by merging the reval and emit timers: both inputs feed state, one per-key
+  timer decides when it reaches the output, value computed AT emit time so
+  it is never staler than one interval. 25 unit tests green.
+  AWS latency under CR-1: p50 604 ms, p95 716 ms, p99 995 ms, max 2,579 ms
+  — i.e. about half the 1 s cap at the median and the full cap at p99,
+  exactly what uniform arrivals inside a fixed window should produce. The
+  cadence cap became the dominant term, as intended.
+  Correctness re-verified live under the new cadence: 53,001 market values
+  re-checked as net_qty x price, ZERO mismatches.
+
+CONFLUENT: CR-1 NOT ACHIEVABLE. Four mechanisms tried, all closed:
+  1. mini-batch (table.exec.mini-batch.*) — the idiomatic Flink SQL answer,
+     literally "emit at most once per interval per key". Confluent Cloud
+     REJECTS it: "Unsupported configuration options". The error lists every
+     supported option and there are SEVEN, none of them table.exec.*:
+     sql.current-catalog, sql.current-database, sql.dry-run,
+     sql.inline-result, sql.local-time-zone, sql.snapshot.write-mode,
+     sql.state.
+  2. CUMULATE — parsed and ran, but it is a state explosion at these steps:
+     CUMULATE opens size/step windows PER KEY, so 1 day / 0.5 s =
+     172,800 open windows per key. Measured result: position-by-account-
+     ticker produced NO OUTPUT AT ALL, the other outputs were starved to
+     0.22-0.29/key/sec (well UNDER the cap, i.e. losing updates, not pacing
+     them), and latency collapsed to p50 235 s / 158 s. Elegant in theory,
+     unusable in practice below ~minute steps.
+  3. TUMBLE over the aggregation — rejected: aggregations emit an updating
+     stream, windowing needs append-only (the Phase 9 wall).
+  4. TUMBLE over the OUTPUT TOPIC (accept an extra Kafka hop) — also
+     rejected: "StreamPhysicalWindowDeduplicate doesn't support consuming
+     update and delete changes which is produced by ChangelogNormalize".
+     Reading an upsert topic gives an updating changelog, same wall moved.
+  Only untested theoretical route: make the intermediate topic append-only
+  instead of upsert, then TUMBLE it — but that changes the output contract
+  (consumers must dedupe) AND costs a Kafka hop (~15x latency, Phase 12).
+
+WHY THIS MATTERS MORE THAN THE LATENCY NUMBERS
+-----------------------------------------------
+Phases 11-12 framed the choice as a performance trade (DataStream faster,
+SQL simpler). CR-1 exposes a CAPABILITY gap: a plain, reasonable product
+requirement — "do not update the screen faster than a human can read" —
+is a one-line config change on DataStream and is NOT EXPRESSIBLE on
+Confluent Cloud Flink SQL for updating aggregations. Rate-limiting an
+updating aggregation has no supported construct there.
+
+The hypothesis going in (both gated by the same delay, so the platform
+difference collapses) was WRONG in an interesting way: the difference did
+not shrink, it changed kind — from "how fast" to "can you do it at all".
