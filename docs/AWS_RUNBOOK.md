@@ -112,8 +112,35 @@ cd infra && terraform destroy       # force_destroy on bucket/ECR handles conten
    multiplies the work — enable ApplicationSnapshotConfiguration before
    relying on rescale-under-load.
 
+## More gotchas (tuning + teardown, 2026-08-03/04)
+
+9. **Orphaned MSF ENIs block VPC deletion — every time.** After the app is
+   gone, two `available` ENIs described as "for KDA application" remain and
+   `terraform destroy` stalls on the subnets/VPC. Delete them by hand
+   (`aws ec2 delete-network-interface`) and re-run destroy. This has now
+   happened on every teardown — treat it as expected, not exceptional.
+10. **You are billed for parallelism/ppkpu + 1.** Managed Flink always adds
+    an orchestration KPU, so parallelism 20 at 2-per-KPU is **11 billed
+    KPUs**, not 10. Quote billed units in any cost claim.
+11. **Partitions are a cost line, not just a tuning knob.** MSK Serverless
+    charges $0.0015/partition-hour: 48 partitions × 6 topics ≈ $0.43/hr,
+    which is a third of the Flink compute bill at the floor config. Size hot
+    topics wide and output topics narrow.
+12. **CloudWatch merges subtask series.** `numRecordsOutPerSecond` under
+    Task/TaskOperator comes back as one averaged series — true rate is
+    **value × parallelism**. Always cross-check the integral against a known
+    record count. Metrics also have a ~2-minute blind spot after job start:
+    size drain backlogs to outlast it.
+13. **A partial apply can leave stale ECS task args.** If the MSF update
+    fails (e.g. app in `FORCE_STOPPING`) *after* the ECS task definition
+    updated, the generator relaunches with the new args while the app keeps
+    the old config. Re-run apply once the app reaches `READY`.
+
 ## Cost note (rough, us-east-1)
 
 MSF ~2 KPU ≈ $0.22/hr; MSK Serverless ≈ $0.75/hr cluster + usage; NAT ≈
 $0.045/hr; Fargate 0.25 vCPU ≈ $0.01/hr. **≈ $1/hr while running — destroy
 when not demoing.**
+
+Tuned floor config (the one in the scoreboard): 11 billed KPUs $1.21 + MSK
+cluster base $0.75 + 288 partition-hours $0.43 ≈ **$2.39/hr all-in**.

@@ -1,0 +1,176 @@
+Phase 11 — Confluent Rematch (session 2026-08-04, Claude Code / Fable 5)
+========================================================================
+
+PROMPT 11
+---------
+"what happened to the plan to attempt to tune/optimize the confluent
+version to see if it can come closer to the new AWS" -> "lets plan and
+execute phase 11"
+
+WHY (fairness gap found in review)
+----------------------------------
+Phase 10 tuned AWS against Confluent's 232.7k — but that Confluent number
+was itself probably not a ceiling:
+1. The drained topic (prices-bulk) had only 16 buckets while tuned AWS ran
+   48 partitions — Confluent's source parallelism was likely bucket-capped.
+2. The autoscaler used 16 of 20 CFUs — consistent with partition-bound,
+   not compute-bound.
+3. The emission-conflation trick (AWS Rung B, +36%) ports to SQL as
+   windowed last-row emission on the position statements.
+What Confluent likely cannot close: the unit-price gap ($0.21/CFU vs
+$0.11/KPU): cost-floor parity would need ~2x AWS's per-unit throughput.
+The project ethos caught ourselves: never compare one system's cruise to
+another's sprint — in either direction.
+
+PLAN
+----
+11.1 Redeploy infra-confluent (same TF, max_cfu=40).
+11.2 Seed via laptop generator (~10 min, ~6.6M records), then in-cloud
+     amplification into 48-bucket bulk topics: prices-bulk (~48M) and
+     trades-bulk (~5M) via 8 parallel copy statements each.
+11.3 Rematch A — conflation-drain ceiling on 48 buckets (direct rerun of
+     the 232.7k test, bucket cap removed).
+11.4 Rematch B — FULL-PIPELINE drain (the AWS-435k comparison Confluent
+     never got): a parallel set of bulk-sourced statements (dedup,
+     positions x2 with windowed 250ms emission conflation, MV joins x2)
+     reading the bulk topics from earliest; measure consumed rate.
+11.4b Rematch C (user addition mid-phase: "are we proving after changes we
+     can still scale like we did aws?"): the same 48-bucket drain at
+     max_cfu=20 vs max_cfu=40 — Confluent's scaling dial is the CFU cap +
+     autoscaler, so pass = throughput ratio tracks the CFUs-actually-used
+     ratio (+-15%), mirroring the AWS 10->20 KPU doubling proof.
+11.5 Report: tuned-vs-tuned symmetric table; peak, sustained, CFUs
+     actually used, $/hr, msgs/s per $/hr both clouds; cost to match each
+     other's peaks in both directions.
+11.4c Rematch D (user addition: "will we test what confluent requires to
+     match aws 435k?"): single-statement ceiling is CFU-insensitive
+     (~265-302k across 3 runs), so matching 435k requires SHARDING —
+     Confluent's scale-out unit is the statement. Test: split prices into
+     two disjoint half-topics (hash of symbol), two conflation statements
+     on two pools draining simultaneously; combined rate is the honest
+     aggregate. Claim shape: "matches 435k with N sharded statements at
+     $Y/hr actual-billed" — or the measured interference that prevents it.
+GAP-CLOSURE ADDENDUM (user: "add all of it to phase 11, leave no gaps"):
+11.4d LATENCY, both clouds, same method: steady 1k trades + 10k prices/s;
+     latency = Kafka record timestamp of output minus event_time in
+     payload, p50/p95/p99. New LatencyProbe java main (runs on laptop for
+     Confluent; as an ECS run-task inside the VPC for MSK).
+11.4e SOAK, 30 min at high rate on both: AWS floor config fed live 110k/s
+     by the Fargate generator; Confluent under self-sustaining ping-pong
+     statement load at its ceiling. Pass = no rate drift, no restart, no
+     checkpoint/state growth trend.
+11.4f FAILURE RECOVERY, both: force-stop/restart mid-load with state
+     restore; Confluent re-validated with the full 5-check suite after
+     quiesce; AWS spot-checked for exact MV math via an in-VPC dump task.
+11.4g AWS VARIANCE RE-RUNS (Confluent showed ±13% across 3 runs; every
+     AWS rung ran once): redeploy, floor 10-KPU drain x2 more, 8-KPU x1
+     more — confirm the floor passes and the 8-KPU fail outside variance.
+11.4h REAL BILLING: pull actual Confluent billing-API charges for the
+     test window (replace the eCKU estimate) and AWS Cost Explorer
+     next-day actuals (noted as post-phase follow-up if lag requires).
+Labeling fixes folded into the scoreboard: full-pipeline rows labeled
+"tuned with capabilities available on each platform" (emission conflation
+not expressible on Confluent); TCO composition notes Confluent's
+intermediate-topic re-reads (statements pay Kafka I/O where AWS operators
+pass in-memory); every single-run number carries a variance label.
+Scope note in scoreboard: soak = 30 min (not hours/days); single region;
+~100B JSON messages only.
+Est. addendum cost: ~$15-25, +2-3 hours.
+STANDING ORDER (user): auto-teardown each stack when its tests complete —
+no prompting; verify zeros afterward as always.
+
+11.5b DEPLOYABILITY AUDIT (user requirement before close): every
+     scoreboard claim re-stated as an exactly deployable config, with a
+     confirmation run ON that config — no implied capacity from unused
+     resources.
+     - AWS floor: already exact — the passing run WAS parallelism=20,
+       ppkpu=2, 48 partitions; quote 11 BILLED KPUs (MSF adds +1
+       orchestration — the "n may require n+1" case), $1.21/hr compute /
+       $2.39 TCO.
+     - Confluent: "16 CFUs" is NOT a deployable cap (max_cfu enum is
+       5/10/20/30/40/50, and cannot be lowered on an existing pool);
+       claim config = max_cfu=20 pool -> CONFIRMATION RUN of the 48-bucket
+       drain on an actual cap-20 pool (expect ~287k, 16 CFUs elected,
+       $3.36/hr actual-usage billing).
+     (User review catch: use INFRA TCO, not compute-only. AWS floor TCO =
+     $1.21 KPUs + $0.75 MSK cluster base + $0.43 partitions (288 x
+     $0.0015 — 48 partitions x 6 topics, OUR tuning choice has a price
+     on AWS) ~= $2.39/hr. Confluent Basic bills NO partition charge and
+     no cluster base (eCKU model) — 48 buckets are free there; its TCO =
+     $3.36 Flink + eCKU throughput (~$0.3-0.8/hr) ~= $3.7-4.2/hr. The
+     honest headline narrows from "64% cheaper compute" to ~40% cheaper
+     infra TCO.)
+11.6 Teardown + verify zeros; then the DOCS CONSOLIDATION REWRITE (user
+     requirement: "re-write so we are not going back and forth — a reader
+     who does not read everything gets the right bottom line"):
+     - ONE authoritative "Final two-cloud scoreboard" written once at the
+       TOP of PERF_RESULTS with the definitive post-Phase-11 numbers (TCO
+       framing); every other doc states only that final verdict and links
+       to it.
+     - README: collapse the record-trading headline rows into one final
+       row; comparison section rewritten current-state-first.
+     - Deck: single comparison slide, no stale/corrected rows.
+     - Article: narrative keeps the journey (that IS the story) but the
+       postscript ends on the final scoreboard numbers.
+     - Per-phase sections in PERF_RESULTS survive as measurement history
+       under a clearly labeled "how the numbers evolved" banner.
+     Merge phase11 to main, tag Phase-11.
+
+Review gates: plan (approved "lets plan and execute") -> rematch A result
+-> rematch B result -> verdict before teardown.
+
+Est. cost ~$5-8 (CFU-minutes during drains + Basic cluster data).
+
+RESULTS
+-------
+REMATCH A (48-bucket source, cap-40 pool): 287k peak, 16 CFUs elected —
+  +23% over the bucket-capped 232.7k. The old number WAS partition-bound.
+REMATCH C (scaling proof, real cap-10 pool): 265.5k at 10 CFUs = 93% of the
+  16-CFU result. Confluent's CFU dial SATURATES for a single statement.
+DEPLOYABILITY AUDIT (real cap-20 pool — the claimable config): 301.7k peak,
+  10 CFUs elected. ("16 CFUs" was never buyable: max_cfu enum is
+  {5,10,20,30,40,50} and can never be lowered on an existing pool.)
+CARDINALITY (the real lever): same statement/pool, 10 symbols -> 301.7k;
+  30 symbols -> 386.3k (+28%). The window parallelizes across KEYS.
+REMATCH D (sharding, 2 statements x 2 pools, disjoint half-topics): 235.7k
+  COMBINED — LESS than one statement alone. Splitting 10 symbols 5+5 halved
+  each shard's parallelism. Sharding only helps if the key space is wide.
+REMATCH B (full pipeline, all 6 statements, cap-20): 127k sustained at 15
+  CFUs vs AWS's 435k for the same logical work. Architectural: Confluent
+  statements hand off through Kafka (dedup output re-read 4x); AWS operators
+  pass in memory inside one job.
+LATENCY (same probe, same method, 11k/s live feed) — THE HEADLINE:
+  AWS       p50   267ms  p95   453ms  p99   495ms  max 1,058ms
+  Confluent p50 33,029ms p95 41,217ms p99 44,213ms max 47,225ms  = 124x
+SOAK 28 min: AWS mean 232,705/s with stdev 30/s (0.01% jitter), 0 restarts.
+  Confluent ping-pong mean 360.9k/s, stdev 63.9k (autoscaler breathing).
+RECOVERY: AWS snapshot-restore under load -> 198,313 MV records re-verified
+  net_qty x price EXACT, 0 mismatches. Confluent statement stopped 30s
+  mid-flow, resumed with state, re-validated with the 5-check suite.
+VARIANCE: Confluent ceiling 265k/287k/302k (+-13%); AWS floor 352k/344k
+  (2%); AWS 8-KPU failed twice (199k, 220k) — the floor is 10 KPUs, not 8,
+  outside any variance explanation.
+TEARDOWN: AWS destroyed, zeros verified (2 orphaned MSF ENIs deleted by hand
+  again — repeatable behavior, now in the runbook). Confluent destroyed,
+  zeros verified (only the built-in 'default' env remains; destroying the
+  environment cascaded the two API-created experiment pools).
+
+ONE HONEST GAP: the FINAL post-recovery re-validation on Confluent was cut
+short by the auto-teardown (my scheduling bug: macOS has no `timeout`, so
+the wait-for-validation loop fell through). What IS proven for Confluent
+recovery: the statement stopped 30s mid-flow and returned to RUNNING, and
+the validation immediately after showed dedup PASS across 5,614,275 trade
+records with 280,501 duplicates absorbed — which is precisely the
+state-survival proof (had dedup state been lost, duplicates would have
+leaked). Completeness and both MV checks also passed; only the two position
+checks were still mid-convergence in the usual checkpoint-lag pattern.
+AWS's recovery was fully verified: 198,313 outputs re-checked exact after
+snapshot restore.
+
+VERDICT: AWS wins throughput (3.4x full pipeline), latency (124x), cost
+(~40% lower TCO at equal work) and steadiness (stdev 30 vs 63.9k).
+Confluent wins build/operate simplicity: ~200 lines of SQL vs ~2,000 of
+Java, no jar, no VPC, no images. It is an ARCHITECTURE difference, not a
+product verdict — in-memory operator handoff vs Kafka between every step.
+Choose by latency budget: sub-second -> DataStream; multi-second-tolerant
+analytics -> SQL, built ~10x faster.

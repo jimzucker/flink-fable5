@@ -137,3 +137,21 @@ resources. Also delete `config/confluent.properties`.
    outputs are stale but internally consistent (positions ↔ MV agree with
    each other, both behind the raw topics) and converge to exact over the
    next checkpoint cycles. Wait ~3-5 min before `confluent_validate.py`.
+10. **`max_cfu` is an enum and one-way.** Only {5, 10, 20, 30, 40, 50} are
+    accepted, and it can **never be lowered** on an existing pool. For
+    scaling experiments, create a *new pool per rung* — statements pick
+    their pool, and pools bill only actual CFU-minutes, so idle extra pools
+    are free. Destroying the environment cascades pool deletion.
+11. **Statement names must be lowercase** `[a-z0-9-]`; anything else returns
+    a cryptic "Request is malformed. name" 400.
+12. **Throughput is bound by key cardinality, not CFUs.** A single statement
+    hit ~265k/sec on 10 CFUs and only ~287k on 16 — but jumped to 386k when
+    the symbol count went 10 → 30. Window/aggregation operators parallelize
+    across *keys*. Corollary: sharding a narrow key space across two pools
+    made things **worse** (235k combined vs 302k on one), because each shard
+    got half the keys.
+13. **Latency is seconds, by architecture.** Each statement hands off through
+    Kafka — a write, a read, and a checkpoint commit per hop. Measured
+    end-to-end through a 3-statement chain: p50 33 s, p99 44 s, versus
+    267 ms / 495 ms for the equivalent single DataStream job. Not a tuning
+    problem; it is what independent statements cost. Budget accordingly.

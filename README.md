@@ -19,9 +19,10 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Provably correct** | 18 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
-| **Scaling proven on AWS** | P=2→4→8 = 16.5k→52k→97k msgs/s at saturation — config-only rescales, zero job restarts ([ladder](docs/PERF_RESULTS.md)) |
-| **Same results on a second cloud** | Rewritten in Flink SQL on Confluent Cloud: same 5 checks pass, 232.7k msgs/s measured — briefly the record ([comparison](docs/PERF_RESULTS.md)) |
-| **Tuned, AWS retook the record — cheaper** | Same drain method: tuning (+89%) took 12 KPUs to 435k msgs/s; **10 KPUs ($1.21/hr) matches Confluent's 232.7k peak at 36% of its compute cost**; 20 KPUs hit 757.6k, exactly 2× the 10-KPU floor — linear survives tuning ([Phase 10](docs/PERF_RESULTS.md)) |
+| **Scaling proven on AWS** | 2× compute units → 2.0× throughput, measured at saturation with all tuning applied; rescale is one Terraform variable ([ladder](docs/PERF_RESULTS.md)) |
+| **Rock-steady under sustained load** | 28 min at 232,705 msgs/s live: standard deviation **30 msgs/s**, zero restarts; survives snapshot-restore with 198,313 outputs re-verified exact |
+| **Built twice, on two clouds, judged by one test suite** | Same pipeline re-implemented in ~200 lines of Flink SQL on Confluent Cloud — same 5 checks pass, exact to the cent ([Confluent edition](docs/CONFLUENT_RUNBOOK.md)) |
+| **Measured head-to-head, deployable configs only** | AWS: p50 **267 ms**, 435k msgs/s full pipeline, ~$2.39/hr. Confluent: p50 33 s, 127k msgs/s, ~$3.36/hr — but a tenth of the code and nothing to deploy ([full scoreboard](docs/PERF_RESULTS.md#final-scoreboard)) |
 
 ## Architecture
 
