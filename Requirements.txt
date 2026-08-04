@@ -22,3 +22,39 @@ Outputs
 2. position by ticker
 3. calc market value by Account/ticker
 4. calc market value by ticker ticker
+
+--------------------------------------------------------------------------
+CHANGE REQUEST CR-1 — Output cadence capped to human reading speed
+(raised 2026-08-04, after latency measurement in phases 11-12)
+--------------------------------------------------------------------------
+Requirement
+  Outputs must not update faster than a person can read them.
+    - Positions      : at most ONE update per key per 500 ms
+    - Market values  : at most ONE update per key per 1000 ms
+  These are ceilings on OUTPUT rate, not on input rate or on how current the
+  value is: each update must carry the latest state at the moment it is
+  emitted, not a stale snapshot from the start of the interval.
+
+Why
+  Reading a formatted number takes 300-500 ms (one eye fixation is
+  ~200-250 ms; a value like 2,345,200.00 needs two). Anything faster is
+  unreadable shimmer, so the extra updates are pure cost with negative user
+  value. 1 s is also the limit at which a person's flow of thought stays
+  unbroken, which sets the market-value cadence.
+
+Window alignment (deliberate)
+  250 ms price conflation -> 500 ms positions -> 1000 ms market values.
+  Each cadence is a harmonic of the one below it, so windows nest cleanly
+  and no output interval ever straddles a partial input interval. Do not
+  pick values (e.g. 750 ms) that break this nesting.
+
+Acceptance criteria
+  1. Measured output rate per key <= 2/sec (positions) and <= 1/sec (MV).
+  2. Final state after quiesce is UNCHANGED: the existing 5-check
+     validation suite must pass untouched on both implementations.
+  3. Freshness: staleness of an emitted value <= its own interval plus
+     normal pipeline time; no compounding of intervals down the chain.
+  4. Cadence is configuration, not code: changing it must not require a
+     rebuild (per the top-level requirement above).
+  5. Both implementations (AWS DataStream, Confluent SQL) satisfy 1-4, and
+     the difference between them is re-measured under the new cadence.
