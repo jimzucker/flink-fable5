@@ -22,7 +22,8 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Scaling proven on AWS** | 2× compute units → 2.0× throughput, measured at saturation with all tuning applied; rescale is one Terraform variable ([ladder](docs/PERF_RESULTS.md)) |
 | **Rock-steady under sustained load** | 28 min at 232,705 msgs/s live: standard deviation **30 msgs/s**, zero restarts; survives snapshot-restore with 198,313 outputs re-verified exact |
 | **Built twice, on two clouds, judged by one test suite** | Same pipeline re-implemented in ~200 lines of Flink SQL on Confluent Cloud — same 5 checks pass, exact to the cent ([Confluent edition](docs/CONFLUENT_RUNBOOK.md)) |
-| **Measured head-to-head, deployable configs only** | AWS: p50 **267 ms**, 435k msgs/s full pipeline, ~$2.39/hr. Confluent: p50 33 s, 127k msgs/s, ~$3.36/hr — but a tenth of the code and nothing to deploy ([full scoreboard](docs/PERF_RESULTS.md#final-scoreboard)) |
+| **Measured head-to-head, deployable configs only** | AWS: p50 **267 ms**, 435k msgs/s full pipeline, ~$2.39/hr. Confluent SQL written for latency: p50 **1.8 s**, ~$3.36/hr — a tenth of the code, nothing to deploy ([full scoreboard](docs/PERF_RESULTS.md#final-scoreboard)) |
+| **How you write the SQL is worth 15×** | The same logic as 6 chained statements vs one fused `STATEMENT SET`: p50 26.7 s → **1.8 s**, p99 55 s → **2.1 s**. Most of the "language gap" was a translation choice ([Phase 12](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 

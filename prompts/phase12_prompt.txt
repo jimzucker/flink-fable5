@@ -1,0 +1,144 @@
+Phase 12 — How close can SQL get to DataStream? (session 2026-08-04)
+====================================================================
+
+PROMPT 12
+---------
+"is it really AWS winning of the comparison of datastreams vs table api in
+flink?" -> "what do you recommend as a plan to address the untested
+optimizations, I am interested in seeing how close we can make SQL to
+datastream perf for this use case" -> "execute it"
+
+THE CATCH (user, and it may overturn Phase 11's headline)
+---------------------------------------------------------
+Phase 11 reported a 124x latency gap and framed it as AWS vs Confluent. It
+is confounded: the real variable is ONE FUSED DATASTREAM JOB vs SIX
+INDEPENDENT SQL STATEMENTS chained through Kafka. We never ran SQL on AWS,
+nor a fused/minimal-statement pipeline on Confluent. "AWS wins" overstates
+what was measured.
+
+Worse — a semantic difference introduced in Phase 9 was never flagged as a
+performance factor:
+  Java conflation  = PROCESSING-TIME timer (fires 250ms after last tick,
+                     unconditionally)
+  SQL conflation   = EVENT-TIME TUMBLE window (emits only when the
+                     watermark advances; watermark = MIN across partitions)
+We ran 48 buckets with 10 symbols => ~38 permanently idle buckets holding
+the global watermark back until idle-detection fires. Measured p50 was
+33 SECONDS — suspiciously close to a default idle timeout. If that is the
+cause, most of the "architectural" gap is a TUNING MISTAKE OF MINE, not the
+cost of statements crossing Kafka.
+
+Also weak in Phase 11 and to be fixed here: the stability comparison put a
+RATE-LIMITED live feed (AWS, sigma=30 — largely the generator's steadiness)
+next to an UNBOUNDED self-amplifying load (Confluent, sigma=64k). Not
+comparable; will be re-stated or dropped.
+
+PLAN — a latency ladder, diagnostic first
+------------------------------------------
+12.0 DIAGNOSTIC (do not optimize blind): measure latency on TWO topics:
+     - position-by-account-ticker  (NO window — pure chain cost)
+     - mv-by-account-ticker        (window + join)
+     Positions fast + MV slow => window/watermark is the cause.
+     Both slow => the statement chain is the cause.
+     Also measure positions on AWS later for a matched pair (Phase 11 only
+     ever probed MV there).
+12.1 WATERMARK IDLENESS + BUCKET RIGHT-SIZING (hypothesis #1, cheapest):
+     source idle-timeout set, buckets matched to key cardinality instead
+     of 48.
+12.2 INLINE CTEs: each output statement carries dedup + conflation as
+     subqueries reading SOURCE topics directly — 4 statements, zero
+     intermediate topics, ~2 fewer Kafka round-trips per path. Costs
+     redundant dedup compute, buys latency.
+12.3 EXECUTE STATEMENT SET: multiple INSERT INTOs in ONE job with a shared
+     source scan and in-memory operator handoff — architecturally the same
+     shape as the Java job. The rung that could close the gap outright.
+12.4 FLOOR PROBE: conflation off (per-tick MV) to establish SQL's pure
+     latency floor, accepting the throughput cost.
+
+Every rung: deploy -> steady 11k/s live feed -> the same LatencyProbe ->
+record p50/p95/p99 AND throughput, so latency wins are priced in capacity.
+Auto-teardown at the end (standing order). Est. ~2-2.5h, ~$10-15.
+
+COMMITMENT: whatever the ladder shows, the docs get corrected — including,
+if 12.1 confirms idleness, a prominent note that the 124x figure conflated
+a tuning mistake with an architectural cost.
+
+HYPOTHESIS CORRECTED BEFORE THE FIRST RUN
+------------------------------------------
+The idle-bucket theory assumed 48 buckets, but the DEPLOYED pipeline (the
+one the latency probe actually measured) uses 6 buckets — with 10 symbols
+that is likely all-populated, so idleness is a weaker suspect than stated.
+Revised ranking: (1) Confluent's DEFAULT WATERMARK STRATEGY on the raw
+tables (auto-generated with a safety margin => TUMBLE waits), (2) the
+2-hop statement chain (Kafka write+read+checkpoint per hop), (3) statement
+checkpoint interval. 12.0 separates (1) from (2) cleanly: the positions
+path has NO window and NO watermark dependency (first-row dedup and
+GROUP BY both emit immediately), the MV path has both.
+
+RESULTS
+-------
+12.0 DIAGNOSTIC — the hypothesis was WRONG, and the answer is better:
+  position-by-account-ticker (NO window, no watermark dep): p50 14,415ms
+  mv-by-account-ticker       (window + join):               p50 26,687ms
+  => The 2-statement CHAIN costs ~14s on its own (~7s per Kafka hop,
+     consistent with exactly-once sinks publishing at checkpoint commits).
+     The window/watermark adds ~12s more. Watermark idleness was NOT the
+     cause (deployed pipeline uses 6 buckets, 10 symbols — all populated).
+     My Phase-11 framing blamed "architecture"; the diagnostic says most of
+     it is the TOPOLOGY I CHOSE (one statement per operator, intermediate
+     topics), which is a translation decision, not a language limit.
+
+12.2 INLINE CTEs (dedup/conflation as subqueries; zero intermediate topics):
+  position-by-account-ticker: p50 14,415ms -> 1,520ms  (9.5x FASTER)
+  mv-by-account-ticker: first probe read 170,865ms — INVALID, the statement
+    was still draining topic backlog (fresh statements start from earliest
+    on this setup). Re-probed after catch-up.
+  MEASUREMENT DISCIPLINE LESSON: verify a statement has caught up (lag ~0)
+  before believing any latency number; a catching-up job reports its
+  backlog age, not its latency.
+
+SQL GOTCHA FOUND: TUMBLE replaces `$rowtime` with `window_time`, so a
+downstream deduplication cannot ORDER BY `$rowtime` — "Column '$rowtime'
+not found". Carry `window_time` forward instead. Needing a fresh $rowtime
+is precisely why the baseline wrote an intermediate topic there; the
+inline form has to thread the time attribute through by hand.
+
+12.2 INLINE re-probe at steady state (the valid numbers):
+  mv-by-account-ticker:       26,687ms -> 1,878ms  (14x faster)
+  position-by-account-ticker: 14,415ms -> 1,974ms  (7.3x faster)
+
+12.3 EXECUTE STATEMENT SET — accepted by Confluent Cloud's REST API and ran
+as ONE fused job (four sinks, shared source scan, in-memory handoff):
+  mv-by-account-ticker:       p50 1,808ms  p95 2,044ms  p99  2,105ms
+  position-by-account-ticker: p50 1,817ms  p95 2,962ms  p99  3,848ms
+  p50 barely moved vs inline, but the TAIL collapsed: MV p99 24,649ms ->
+  2,105ms (11.7x). Fusion's payoff is removing checkpoint-gated Kafka hops
+  from the tail, not shaving the median.
+
+12.1 (watermark idleness) SKIPPED — the 12.0 diagnostic disproved it (6
+buckets, 10 symbols, all populated; the no-window path was slow too).
+12.4 (floor probe, conflation off) UNNECESSARY — positions (NO window,
+1,817ms) and MV (window, 1,808ms) came out IDENTICAL, which already
+isolates the residual: it is not the window.
+
+WHAT THE RESIDUAL ~1.8s ACTUALLY IS (delivery semantics, not language):
+  AWS job:   DeliveryGuarantee.AT_LEAST_ONCE — sinks publish IMMEDIATELY
+             (verified in PositionPipeline.java:146)
+  Confluent: exactly-once — sinks publish at TRANSACTIONAL CHECKPOINT
+             COMMITS
+So the two stacks were never compared at the same delivery guarantee. The
+remaining gap is largely a commit-cycle difference; AWS configured for
+exactly-once would also be checkpoint-gated.
+
+FINAL ANSWER TO THE PHASE QUESTION
+-----------------------------------
+SQL written FOR LATENCY gets within ~7x of DataStream on p50
+(1.8s vs 267ms) and ~4x on p99 (2.1s vs 495ms) for this use case — NOT the
+124x Phase 11 published. Roughly 15x of that original gap was my
+translation choice (one statement per operator, data through Kafka between
+each), and most of what remains is a delivery-guarantee asymmetry.
+
+HONEST GAPS REMAINING: (a) AWS's positions-path latency was never measured
+(only MV); ~267ms is an ESTIMATE by analogy and is labelled as such.
+(b) Neither stack was re-run at a matched delivery guarantee. (c) Throughput
+of the fused statement set was not measured — only latency.

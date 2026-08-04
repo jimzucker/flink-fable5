@@ -263,7 +263,7 @@ title(s, "Two clouds, one test suite — the measured scoreboard", "Same require
 table(s, [
     ["", "AWS (Managed Flink + MSK)", "Confluent Cloud (Flink SQL)"],
     ["Correctness - 5 independent checks", "All pass, exact to the cent", "All pass, exact to the cent"],
-    ["End-to-end latency (live)", "p50 267 ms  /  p99 495 ms", "p50 33 s  /  p99 44 s"],
+    ["End-to-end latency (live)", "p50 267 ms  /  p99 495 ms", "p50 1.8 s  /  p99 2.1 s (SQL tuned for latency)"],
     ["Full pipeline throughput", "435,000 msgs/sec", "127,000 msgs/sec"],
     ["Sustained 28 min", "232,705/sec, deviation 30/sec", "360,900/sec, deviation 63,900/sec"],
     ["Cost at equal work", "~ $2.39/hr all-in", "~ $3.36/hr + usage"],
@@ -272,7 +272,7 @@ table(s, [
 ], 0.7, 1.8, 12.0, [4.2, 3.9, 3.9], size=13)
 bullets(s, [
     ("AWS is faster, cheaper and steadier: one job passes records between operators in memory", 0, GREEN, True),
-    ("Confluent is ~10x less code and nothing to deploy: independent SQL statements - which is why data crosses Kafka between every step", 0, DARK, False),
+    ("Confluent is ~10x less code and nothing to deploy - but the SQL must be ONE fused statement set; writing it as chained statements costs 15x latency (26.7s -> 1.8s when fixed)", 0, DARK, False),
     ("Decide by latency budget, not by benchmark: sub-second -> DataStream; multi-second-tolerant analytics -> SQL", 0, DARK, True),
 ], y=5.9, size=15, gap=9)
 

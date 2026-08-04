@@ -68,17 +68,25 @@ count the whole infrastructure bill and not just compute, quote configs a
 person can actually deploy, and give each platform the same tuning
 courtesies. Every correction is in the repo.
 
-**What the honest scoreboard says.** AWS: 267 ms median latency, 435,000
-msgs/sec through the full pipeline, and 28 minutes at 232,705/sec with a
-standard deviation of *thirty*. Confluent: 33 seconds median latency,
-127,000 msgs/sec, at higher cost. But it took **200 lines of SQL instead of
-2,000 lines of Java**, with no jar, no VPC, and nothing to deploy. That's
-not one product beating another — it's the architecture showing through.
-One Flink job hands records between operators in memory; independent SQL
-statements hand them through Kafka, and every hop costs a write, a read,
-and a checkpoint. Sub-second work belongs on the first; anything that
-tolerates multi-second freshness gets built ten times faster on the second.
-The test suite that proved both versions correct never had to change.
+**Then I caught myself.** My scoreboard said SQL was 124× slower — 33
+seconds against 267 milliseconds. A reviewer's question ("is that really
+the language, or how you wrote it?") sent me back to measure properly. It
+was how I wrote it. I had translated the Java pipeline one operator per SQL
+statement, so every stage handed off through a Kafka topic, paying a
+checkpoint commit at each hop. Rewriting the identical logic as **one fused
+statement set** took the median from 26.7 seconds to **1.8** and the 99th
+percentile from 55 seconds to **2.1**. The real gap is about 7×, not 124×.
+Most of what's left isn't the language either — it's that one side was
+publishing immediately and the other was committing transactionally.
+
+**So the honest scoreboard reads:** DataStream is meaningfully faster and
+cheaper; SQL costs a tenth of the code and has nothing to deploy; both
+produce identical results to the cent. Sub-second budgets belong on the
+first. Anything tolerating a couple of seconds gets built far faster on the
+second — provided you write it as one fused job rather than a chain of
+statements, which is a 15× mistake hiding in plain sight. The test suite
+that proved both versions correct never had to change, which is the only
+reason any of this was cheap enough to find out.
 
 **github.com/jimzucker/flink-fable5**
 
