@@ -254,7 +254,7 @@ ceiling and it adds units by itself.
 | Normal trading day — 1,000 trades/sec | Kept up, no delay | Kept up, no delay | Neither falls behind |
 | Ridiculous prices — $10 trillion/share | Exact to the cent | Exact to the cent (500 accounts, zero errors) | Money math never loses a cent on either |
 | Price storm — 10,000 price updates/sec | Absorbed by the 250 ms window; trades unaffected | Same: 10,000/sec in, ~10/sec out; trades unaffected | The bottleneck fix works identically |
-| Top speed | 110,000 msgs/sec on 12 hand-picked units | 132,000/sec capped at 10 units; **232,000/sec** capped at 20 (used 16) | Confluent processed 2× the AWS record; both runs ended because the test data ran out, not capacity |
+| Top speed | 110,000 msgs/sec on 12 hand-picked units *(later corrected: this was never AWS's ceiling — see Phase 10: tuned AWS hit 757,612/sec on 20 units, and 10 units match Confluent's peak at a third of the compute cost)* | 132,000/sec capped at 10 units; **232,000/sec** capped at 20 (used 16) | At the time, Confluent led 2×; measured properly and tuned (Phase 10), AWS leads ~3× at equal spend. Both clouds always ended runs out of test data, not capacity |
 | How you turn it up | Edit one setting, redeploy | Raise one ceiling; it scales itself | Same dial — Confluent turns it for you |
 | The honest footnote | Data generated inside AWS at full speed | A laptop can't *send* 110k/sec, so we measured Confluent chewing through a 26M-message backlog | Confluent's number is proven processing speed; live feeding at that rate needs a cloud-based generator |
 
