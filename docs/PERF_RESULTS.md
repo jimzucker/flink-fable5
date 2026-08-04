@@ -310,6 +310,54 @@ show stale-but-internally-consistent outputs that converge to green.
 Deployment story and gotchas (statement-name races, `IF NOT EXISTS`,
 the JDK 25 silent SASL failure): [CONFLUENT_RUNBOOK.md](CONFLUENT_RUNBOOK.md#gotchas-found-while-building--updated-as-deployment-proceeds).
 
+## Phase 10 — AWS efficiency parity: match Confluent's peak, then undercut its cost (2026-08-03/04)
+
+Phase 9's 232.7k msgs/s Confluent number was a ceiling (backlog-drain)
+measurement; Phase 8's AWS 110k was ingest-limited at 52% busy. Phase 10
+measured AWS the same way, tuned for throughput-per-dollar, then walked the
+cost down. Same drain methodology, rates cross-checked against generator
+counts every run.
+
+**Tuning at fixed cost (12 KPUs, $1.43/hr):**
+
+| Config | Full-pipeline sustained |
+|---|---|
+| Untuned baseline | ~230k msgs/s (peak 483k in the price-only tail) |
+| + config only: P=24 packed 2/KPU, 48 partitions, sink batching (linger 25 ms, 256 KB, lz4) | ~319k (+39%) |
+| + code: conflated output emission, `emit.interval.ms=250` | **~435k (+89%)** |
+
+The bottleneck was the four sink tasks (897–1000 ms/s busy, backpressuring
+the sources). Emission conflation — the Phase 7 timer pattern applied to
+*outputs* — is the biggest single lever. It ships default-off
+(`emit.interval.ms=0`), so Case 1's latency guarantee is unchanged unless
+explicitly traded (~≤250 ms added output latency in throughput mode).
+Validated by 3 new harness tests (21 total) — final state identical.
+
+**The descending cost ladder (tuned), vs Confluent's 232.7k at $3.36/hr:**
+
+| KPUs | $/hr | Peak msgs/s | Verdict |
+|---|---|---|---|
+| 8 | $0.99 | 198,932 | fails — downscaling goes sub-linear below 10 (24.9k/KPU) |
+| **10** | **$1.21** | **351,941**, 5 consecutive min ≥ 232.7k | **the floor — matches Confluent 64% cheaper** |
+| 12 | $1.43 | ~435k sustained | 1.9× the bar |
+| 20 | $2.31 | **757,612**, top-3 avg ~650k | 3.3× the bar |
+
+**Linearity, preserved through all tuning:** doubling the floor (10 → 20
+KPUs) doubled sustained throughput exactly (325k → 650k top-3 average;
+peak 2.15×). "Volume is a dial" survives the optimization work.
+
+**Bottom line:** AWS matches Confluent's measured peak at **$1.21/hr vs
+$3.36/hr of compute** and delivers ~4× the throughput per dollar
+(~291–328k msgs/s per $/hr vs ~69k). Confluent's counterweights remain
+real: zero pipeline code (~200 lines of SQL), no jar/VPC/image builds, and
+cheaper per-GB networking at very high data volumes — the cost crossover
+math is in the Phase 9 section.
+
+Measurement notes for reproducers: CloudWatch merges MSF subtask series —
+multiply by parallelism and cross-check totals against known backlog
+counts; MSF metrics have a ~2-minute blind spot after job start, so size
+backlogs to outlast it.
+
 ## Capacity playbook (how to handle any volume)
 
 Measured capacity model: **~12k msgs/s per KPU** on this workload, linear to

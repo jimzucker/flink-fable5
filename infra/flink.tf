@@ -72,7 +72,8 @@ resource "aws_kinesisanalyticsv2_application" "this" {
             "dedup.state.ttl.ms"      = "3600000"
           },
           local.msk_iam_props,
-          { for k, v in var.kafka_extra_props : "kafka.props.${k}" => v }
+          { for k, v in var.kafka_extra_props : "kafka.props.${k}" => v },
+          var.flink_extra_props
         )
       }
     }

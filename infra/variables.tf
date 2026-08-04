@@ -39,6 +39,12 @@ variable "kafka_extra_props" {
   default     = {}
 }
 
+variable "flink_extra_props" {
+  description = "Extra raw app properties for the Flink app (e.g. emit.interval.ms for conflated output emission)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "flink_parallelism_per_kpu" {
   type    = number
   default = 1

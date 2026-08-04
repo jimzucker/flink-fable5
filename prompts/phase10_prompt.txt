@@ -55,6 +55,11 @@ of the P=12" -> "lets do all the tuning then prove the lowest cost where
 aws can match the confluent test at peak"
 Refined goal: after tuning, walk KPUs DOWN (12 -> 8 -> 6) and find the
 cheapest config that still sustains >= 232.7k msgs/s full-pipeline drain.
+-> "we should prove at the end we can still scale up linearly with all the
+changes" -> refined: "for linear only showing we can scale up linear from
+10.3b required" — take the cheapest passing config from the descending
+ladder and prove ONE scale-up doubling (~2x KPUs -> ~2x throughput, ±15%);
+ladder rungs corroborate as midpoints.
 
 RESULTS SO FAR
 --------------
@@ -77,7 +82,39 @@ New deployment gotchas (for the runbook):
   - Generator IAM needed kafka-cluster:DeleteTopic + AlterTopic for the
     new topics.recreate / partition-grow support.
 
-RESPONSE (summary — updated as the phase executes)
---------------------------------------------------
-[Rung A in progress: P=24 on the same 12 KPUs (ppkpu=2), 48 partitions,
-sink batching linger=25ms/batch=256KB/lz4; fresh 48-partition preload]
+RESULTS (all drains: same backlog-drain method as Phase 9's Confluent test,
+rates = CloudWatch merged-series x parallelism, totals cross-checked
+against generator counts)
+--------------------------------------------------------------------------
+TUNING AT FIXED COST (12 KPUs, $1.43/hr):
+  untuned baseline:        ~230k sustained (peak 483k price-only tail)
+  Rung A (config only):    ~319k sustained mixed  (+39%)
+    P=24 via ppkpu=2, 48 partitions, sink linger=25ms/batch=256KB/lz4
+  Rung B (+code):          ~435k sustained mixed  (+89% vs baseline)
+    emit.interval.ms=250 conflated output emission (PositionAggregator +
+    TickerPositionAggregator; default 0 = per-event, latency unchanged);
+    3 new harness tests, 21 total green; bottleneck had been the four
+    sink tasks pinned at 897-1000 ms/s busy with backpressure to sources.
+
+DESCENDING COST LADDER (tuned, vs Confluent 232.7k @ $3.36/hr compute):
+   8 KPUs $0.99/hr: peak 199k  FAIL (sub-linear below 10: 24.9k/KPU)
+  10 KPUs $1.21/hr: peak 352k, 5 consecutive min >= 232.7k  <- THE FLOOR
+  12 KPUs $1.43/hr: ~435k sustained (36k/KPU)
+  20 KPUs $2.31/hr: peak 757.6k, top-3 avg ~650k
+
+LINEARITY (user requirement, from the floor): 10 -> 20 KPUs = 2.0x
+sustained (325k -> 650k top-3 avg), peak 2.15x. The dial survives all
+tuning.
+
+VERDICT: AWS matches Confluent's peak at $1.21/hr vs $3.36/hr — 64%
+cheaper compute — and at equal spend does ~4x the work (~291-328k msgs/s
+per $/hr vs Confluent's ~69k). Emission conflation is the single biggest
+lever (+36% alone); it ships default-off (emit.interval.ms=0) so the
+latency guarantee of Case 1 is unchanged unless explicitly traded.
+
+More gotchas found (runbook): CloudWatch merges subtask series (x
+parallelism, validate against known totals); MSF metrics have a ~2-min
+blind spot after job start (size backlogs to outlast it); terraform
+partial-apply race also runs OLD-args ECS tasks; generator IAM needed
+DeleteTopic/AlterTopic; a laptop DNS blip can fail an apply mid-plan
+(retry is safe).
