@@ -46,47 +46,36 @@ run and be measured before we moved on. In production, those same problems
 would have been incidents. All of it is in the repo: the plan, the code,
 the tests, the results, and all eight prompts.
 
-**The Sunday epilogue: same tests, second cloud.** One more prompt:
-*could the whole thing run on Confluent Cloud instead?* Their managed
-Flink speaks SQL, not Java — so the pipeline was rewritten as six SQL
-statements, and the same validation suite, unchanged, proved the rewrite
-correct: every position and market value exact to the cent after 300,000
-trades. Then it beat Saturday's throughput record — 232,000 messages/sec,
-2.1× the AWS finale — at an estimated monthly cost about the same as AWS
-at volumes under ~10,000 messages/sec — and sized to the identical
-110k msgs/sec job, roughly 40% less. About $4 of Confluent,
-torn down by evening. That's the quiet
-payoff of tests that re-derive truth from raw data: switching engines, or
-clouds, becomes an afternoon, not a quarter.
+**The epilogue: I rebuilt it on a second cloud, then spent three days
+learning to measure it honestly.** One prompt asked whether the whole thing
+could run on Confluent Cloud instead. Their managed Flink speaks SQL, not
+Java, so the pipeline became 200 lines of SQL instead of 2,000 lines of
+Java — and the same validation suite, unchanged, proved it correct to the
+cent. That part took an afternoon and $4.
 
-**The Monday postscript: measuring it properly.** The first comparison had
-Confluent ahead — 232,000 messages/sec against AWS's 110,000. It was wrong,
-and not in Confluent's favor: I had measured AWS at cruising speed and
-Confluent at a sprint. Fixing that took four rounds of my own review
-catching my own mistakes — compare systems at the same operating point,
-count the whole infrastructure bill and not just compute, quote configs a
-person can actually deploy, and give each platform the same tuning
-courtesies. Every correction is in the repo.
+Benchmarking the two fairly took far longer, because every early number I
+published was wrong in a way I had to be shown. I compared one system's
+cruising speed against the other's sprint. I quoted compute cost and
+ignored the rest of the bill. I cited a configuration nobody could actually
+deploy. And the worst one: I reported SQL as 124× slower on latency, when
+what I had really measured was my own translation — I had written one SQL
+statement per Java operator, so every stage handed off through a Kafka
+topic. Rewritten as a single fused statement set, the identical logic went
+from 26.7 seconds to **1.8**, and the tail from 55 seconds to **2.1**. The
+honest gap is about 7×, and most of what remains is a delivery-guarantee
+difference, not a language one.
 
-**Then I caught myself.** My scoreboard said SQL was 124× slower — 33
-seconds against 267 milliseconds. A reviewer's question ("is that really
-the language, or how you wrote it?") sent me back to measure properly. It
-was how I wrote it. I had translated the Java pipeline one operator per SQL
-statement, so every stage handed off through a Kafka topic, paying a
-checkpoint commit at each hop. Rewriting the identical logic as **one fused
-statement set** took the median from 26.7 seconds to **1.8** and the 99th
-percentile from 55 seconds to **2.1**. The real gap is about 7×, not 124×.
-Most of what's left isn't the language either — it's that one side was
-publishing immediately and the other was committing transactionally.
+**Where that leaves the choice.** DataStream is faster and cheaper, and
+sub-second budgets belong there. SQL costs a tenth of the code with nothing
+to deploy, and is the right answer whenever a couple of seconds is fine —
+provided you write it as one fused job, because writing it as a chain of
+statements is a 15× mistake hiding in plain sight. Both produced identical
+results, every time.
 
-**So the honest scoreboard reads:** DataStream is meaningfully faster and
-cheaper; SQL costs a tenth of the code and has nothing to deploy; both
-produce identical results to the cent. Sub-second budgets belong on the
-first. Anything tolerating a couple of seconds gets built far faster on the
-second — provided you write it as one fused job rather than a chain of
-statements, which is a 15× mistake hiding in plain sight. The test suite
-that proved both versions correct never had to change, which is the only
-reason any of this was cheap enough to find out.
+The lesson I'd keep isn't about either product. **Benchmarks mostly measure
+the person running them.** Mine only got trustworthy because a reviewer kept
+asking what else was different — and because a test suite that re-derives
+truth from raw data made every re-measurement cheap.
 
 **github.com/jimzucker/flink-fable5**
 
