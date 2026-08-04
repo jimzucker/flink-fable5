@@ -178,3 +178,24 @@ timer code cannot run there. Full analysis in prompts/phase9_prompt.txt.
 
 **Outcome to review:** the same validation suite passing against two
 implementations on two clouds, plus a DataStream-vs-SQL comparison table.
+
+---
+
+## Phase 10 — AWS efficiency parity (match Confluent's 232k, don't outspend it)
+
+Phase 9's 232.7k msgs/s on Confluent was a backlog-drain (ceiling) number;
+AWS's 110k was ingest-limited at 52% busy. Phase 10 measures AWS the same
+way and tunes for throughput-per-dollar instead of scaling out:
+
+- **10.1** Baseline drain at P=12, stack as-is — the true current ceiling.
+- **10.2** Rung A, config only: partitions 32, sink batching + lz4,
+  `ParallelismPerKPU` 2–4 on the same 12 KPUs.
+- **10.3** Rung B, code: conflated *emission* on position/MV outputs (the
+  Phase 7 timer pattern applied to sinks); validation must stay green.
+- **10.4** Verdict: both clouds in one table — msgs/s, units, $/hr, and
+  msgs/s-per-dollar — same drain methodology. Target ≥232k on ≤12 KPUs.
+- **10.5** More KPUs only as a recorded last resort.
+- **10.6** Teardown with verified zeros, squash-merge, tag Phase-10.
+
+**Outcome to review:** AWS hitting the Confluent bar at equal-or-lower
+cost, or an honest account of which lever fell short and why.

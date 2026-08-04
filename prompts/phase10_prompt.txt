@@ -1,0 +1,55 @@
+Phase 10 — AWS Efficiency Parity (session 2026-08-03, Claude Code / Fable 5)
+============================================================================
+
+PROMPT 10
+---------
+"review the aws performance and see how we can get it to match the confluent
+top end, make a plan" -> (review pushback) "wont this be even more expensive,
+you should be trying to make aws cost similar to confluent and tune the pipe
+by adding windows, increasing partitions etc, do we have to increase KPU to
+meet confluent perf" -> "go ahead"
+
+ANALYSIS
+--------
+The two "top ends" were measured differently. AWS's 110k msgs/s (P=12) was
+INGEST-limited: 1:1 with the generator at ~52% busy — half the headroom
+unused. Confluent's 232.7k was a CEILING measurement: backlog drain, no
+ingest constraint. We compared AWS's cruising speed to Confluent's sprint.
+
+Efficiency per dollar (list prices) already favors AWS:
+  AWS:       ~12.1k msgs/s per KPU  @ $0.11/hr  -> ~110k msgs/s per $/hr
+  Confluent: ~14.5k msgs/s per CFU  @ $0.21/hr  ->  ~69k msgs/s per $/hr
+Confluent's 232k run burned $3.36/hr of compute. Brute-forcing 232k on AWS
+(P~20) would cost $2.20/hr — cheaper, but the user's directive is better:
+TUNE the pipeline so ~12 KPUs (~$1.40/hr) hits 232k. No scale-out.
+
+Untapped levers (in plan order):
+1. ParallelismPerKPU (the sleeper): we ran 1 subtask/KPU for clean ladder
+   math; MSF allows up to 8 — more parallelism from the same billed KPUs.
+2. More windows (user's ask): Phase 7 conflated price->MV; position and MV
+   EMISSION still writes per event. Same per-key timer pattern on output
+   emission (100-250 ms snapshots) slashes sink work; validation stays
+   green by the same final-state argument as Phase 7.
+3. Partitions 16->32 + sink batching (linger/batch.size/lz4).
+Excluded: binary serialization (3-5x known) — changes the workload, breaks
+parity with the Confluent test which also paid the JSON tax.
+
+PLAN
+----
+10.1 Baseline: redeploy stack, backlog-drain at P=12 as-is -> true current
+     AWS ceiling (est. 140-210k).
+10.2 Rung A (config only): partitions=32, sink batching/compression,
+     ParallelismPerKPU=2-4 on the same 12 KPUs -> re-drain.
+10.3 Rung B (code): conflated emission on position/MV outputs; make test +
+     validation green; re-drain.
+10.4 Verdict table: msgs/s, units, $/hr, msgs/s-per-dollar, both clouds,
+     same drain methodology. Target: >=232k on <=12 KPUs.
+10.5 Only if tuning falls short: add KPUs last, report honestly.
+10.6 Teardown, verify zeros, squash-merge, tag Phase-10. Est. cost ~$5.
+
+Review gates: plan (approved "go ahead") -> baseline result before config
+changes -> Rung A result before code changes -> results before teardown.
+
+RESPONSE (summary — updated as the phase executes)
+--------------------------------------------------
+[in progress]
