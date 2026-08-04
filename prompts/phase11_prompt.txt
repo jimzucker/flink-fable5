@@ -34,9 +34,64 @@ PLAN
      never got): a parallel set of bulk-sourced statements (dedup,
      positions x2 with windowed 250ms emission conflation, MV joins x2)
      reading the bulk topics from earliest; measure consumed rate.
+11.4b Rematch C (user addition mid-phase: "are we proving after changes we
+     can still scale like we did aws?"): the same 48-bucket drain at
+     max_cfu=20 vs max_cfu=40 — Confluent's scaling dial is the CFU cap +
+     autoscaler, so pass = throughput ratio tracks the CFUs-actually-used
+     ratio (+-15%), mirroring the AWS 10->20 KPU doubling proof.
 11.5 Report: tuned-vs-tuned symmetric table; peak, sustained, CFUs
      actually used, $/hr, msgs/s per $/hr both clouds; cost to match each
      other's peaks in both directions.
+11.4c Rematch D (user addition: "will we test what confluent requires to
+     match aws 435k?"): single-statement ceiling is CFU-insensitive
+     (~265-302k across 3 runs), so matching 435k requires SHARDING —
+     Confluent's scale-out unit is the statement. Test: split prices into
+     two disjoint half-topics (hash of symbol), two conflation statements
+     on two pools draining simultaneously; combined rate is the honest
+     aggregate. Claim shape: "matches 435k with N sharded statements at
+     $Y/hr actual-billed" — or the measured interference that prevents it.
+GAP-CLOSURE ADDENDUM (user: "add all of it to phase 11, leave no gaps"):
+11.4d LATENCY, both clouds, same method: steady 1k trades + 10k prices/s;
+     latency = Kafka record timestamp of output minus event_time in
+     payload, p50/p95/p99. New LatencyProbe java main (runs on laptop for
+     Confluent; as an ECS run-task inside the VPC for MSK).
+11.4e SOAK, 30 min at high rate on both: AWS floor config fed live 110k/s
+     by the Fargate generator; Confluent under self-sustaining ping-pong
+     statement load at its ceiling. Pass = no rate drift, no restart, no
+     checkpoint/state growth trend.
+11.4f FAILURE RECOVERY, both: force-stop/restart mid-load with state
+     restore; Confluent re-validated with the full 5-check suite after
+     quiesce; AWS spot-checked for exact MV math via an in-VPC dump task.
+11.4g AWS VARIANCE RE-RUNS (Confluent showed ±13% across 3 runs; every
+     AWS rung ran once): redeploy, floor 10-KPU drain x2 more, 8-KPU x1
+     more — confirm the floor passes and the 8-KPU fail outside variance.
+11.4h REAL BILLING: pull actual Confluent billing-API charges for the
+     test window (replace the eCKU estimate) and AWS Cost Explorer
+     next-day actuals (noted as post-phase follow-up if lag requires).
+Labeling fixes folded into the scoreboard: full-pipeline rows labeled
+"tuned with capabilities available on each platform" (emission conflation
+not expressible on Confluent); TCO composition notes Confluent's
+intermediate-topic re-reads (statements pay Kafka I/O where AWS operators
+pass in-memory); every single-run number carries a variance label.
+Scope note in scoreboard: soak = 30 min (not hours/days); single region;
+~100B JSON messages only.
+Est. addendum cost: ~$15-25, +2-3 hours.
+STANDING ORDER (user): auto-teardown each stack when its tests complete —
+no prompting; verify zeros afterward as always.
+
+11.5b DEPLOYABILITY AUDIT (user requirement before close): every
+     scoreboard claim re-stated as an exactly deployable config, with a
+     confirmation run ON that config — no implied capacity from unused
+     resources.
+     - AWS floor: already exact — the passing run WAS parallelism=20,
+       ppkpu=2, 48 partitions; quote 11 BILLED KPUs (MSF adds +1
+       orchestration — the "n may require n+1" case), $1.21/hr compute /
+       $2.39 TCO.
+     - Confluent: "16 CFUs" is NOT a deployable cap (max_cfu enum is
+       5/10/20/30/40/50, and cannot be lowered on an existing pool);
+       claim config = max_cfu=20 pool -> CONFIRMATION RUN of the 48-bucket
+       drain on an actual cap-20 pool (expect ~287k, 16 CFUs elected,
+       $3.36/hr actual-usage billing).
      (User review catch: use INFRA TCO, not compute-only. AWS floor TCO =
      $1.21 KPUs + $0.75 MSK cluster base + $0.43 partitions (288 x
      $0.0015 — 48 partitions x 6 topics, OUR tuning choice has a price
@@ -45,8 +100,21 @@ PLAN
      $3.36 Flink + eCKU throughput (~$0.3-0.8/hr) ~= $3.7-4.2/hr. The
      honest headline narrows from "64% cheaper compute" to ~40% cheaper
      infra TCO.)
-11.6 Teardown + verify zeros; docs sync (PERF_RESULTS, README, article,
-     deck); merge phase10 then phase11 to main, tag Phase-10 + Phase-11.
+11.6 Teardown + verify zeros; then the DOCS CONSOLIDATION REWRITE (user
+     requirement: "re-write so we are not going back and forth — a reader
+     who does not read everything gets the right bottom line"):
+     - ONE authoritative "Final two-cloud scoreboard" written once at the
+       TOP of PERF_RESULTS with the definitive post-Phase-11 numbers (TCO
+       framing); every other doc states only that final verdict and links
+       to it.
+     - README: collapse the record-trading headline rows into one final
+       row; comparison section rewritten current-state-first.
+     - Deck: single comparison slide, no stale/corrected rows.
+     - Article: narrative keeps the journey (that IS the story) but the
+       postscript ends on the final scoreboard numbers.
+     - Per-phase sections in PERF_RESULTS survive as measurement history
+       under a clearly labeled "how the numbers evolved" banner.
+     Merge phase11 to main, tag Phase-11.
 
 Review gates: plan (approved "lets plan and execute") -> rematch A result
 -> rematch B result -> verdict before teardown.
