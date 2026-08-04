@@ -199,3 +199,27 @@ way and tunes for throughput-per-dollar instead of scaling out:
 
 **Outcome to review:** AWS hitting the Confluent bar at equal-or-lower
 cost, or an honest account of which lever fell short and why.
+
+---
+
+## Phase 11 — Confluent rematch (symmetry demands it)
+
+Phase 10 review caught our own methodology sin in reverse: Confluent's
+232.7k was measured on a 16-bucket source (tuned AWS ran 48 partitions)
+with the autoscaler never reaching its cap — likely partition-bound, not a
+ceiling. The rematch gives Confluent the same courtesies AWS got:
+
+- **11.1** Redeploy (`max_cfu=40`).
+- **11.2** Seed (laptop) + in-cloud amplification into **48-bucket** bulk
+  topics (~48M prices, ~5M trades).
+- **11.3** Rematch A: conflation-drain ceiling, bucket cap removed.
+- **11.4** Rematch B: full-pipeline bulk drain — dedup, positions (with
+  windowed 250 ms emission conflation, the SQL port of AWS Rung B), MV
+  joins — the comparison against AWS's tuned 435k that Confluent never got.
+- **11.5** Symmetric tuned-vs-tuned verdict: peaks, CFUs actually used,
+  $/hr, msgs/s-per-dollar, cost to match each other's numbers both ways.
+- **11.6** Teardown + zeros, docs sync, merge, tag Phase-11.
+
+**Outcome to review:** either Confluent closes the gap (and the Phase 10
+verdict gets corrected — the ethos demands it) or the gap survives honest
+measurement on both sides.

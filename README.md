@@ -21,7 +21,7 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
 | **Scaling proven on AWS** | P=2→4→8 = 16.5k→52k→97k msgs/s at saturation — config-only rescales, zero job restarts ([ladder](docs/PERF_RESULTS.md)) |
 | **Same results on a second cloud** | Rewritten in Flink SQL on Confluent Cloud: same 5 checks pass, 232.7k msgs/s measured — briefly the record ([comparison](docs/PERF_RESULTS.md)) |
-| **Tuned, AWS retook the record — cheaper** | Same drain method: tuning (+89%) took 12 KPUs to 435k msgs/s; **10 KPUs ($1.21/hr) matches Confluent's 232.7k peak at 36% of its compute cost**; 20 KPUs hit 757.6k, exactly 2× the 10-KPU floor — linear survives tuning ([Phase 10](docs/PERF_RESULTS.md)) |
+| **Tuned, AWS retook the record — cheaper** | Same drain method: tuning (+89%) took 12 KPUs to 435k msgs/s; the 10-KPU floor matches Confluent's 232.7k peak at **~40% lower infra TCO** (≈$2.39/hr vs ≈$4/hr; 64% cheaper on compute alone); 20 KPUs hit 757.6k, exactly 2× the floor — linear survives tuning ([Phase 10](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 

@@ -65,8 +65,8 @@ Confluent at a sprint. Measured the same way, untuned AWS already averaged
 236,000/sec. Then the tuning your reviewer asks for — batch the sinks, pack
 the compute units, apply the same 250 ms window trick to *outputs* — took
 the identical hardware to 435,000/sec, and scaling *down* found the floor:
-**10 compute units, $1.21/hour, matching Confluent's peak at roughly a
-third of its compute cost** — with doubling the units still doubling the
+**10 compute units matching Confluent's peak at about 40% less total
+infrastructure cost** — with doubling the units still doubling the
 throughput. Moral: never compare one system's cruise to another's sprint,
 and the cheapest capacity is the work you never do.
 

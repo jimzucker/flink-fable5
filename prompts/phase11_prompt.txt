@@ -37,6 +37,14 @@ PLAN
 11.5 Report: tuned-vs-tuned symmetric table; peak, sustained, CFUs
      actually used, $/hr, msgs/s per $/hr both clouds; cost to match each
      other's peaks in both directions.
+     (User review catch: use INFRA TCO, not compute-only. AWS floor TCO =
+     $1.21 KPUs + $0.75 MSK cluster base + $0.43 partitions (288 x
+     $0.0015 — 48 partitions x 6 topics, OUR tuning choice has a price
+     on AWS) ~= $2.39/hr. Confluent Basic bills NO partition charge and
+     no cluster base (eCKU model) — 48 buckets are free there; its TCO =
+     $3.36 Flink + eCKU throughput (~$0.3-0.8/hr) ~= $3.7-4.2/hr. The
+     honest headline narrows from "64% cheaper compute" to ~40% cheaper
+     infra TCO.)
 11.6 Teardown + verify zeros; docs sync (PERF_RESULTS, README, article,
      deck); merge phase10 then phase11 to main, tag Phase-10 + Phase-11.
 

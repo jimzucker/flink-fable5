@@ -346,9 +346,15 @@ Validated by 3 new harness tests (21 total) — final state identical.
 KPUs) doubled sustained throughput exactly (325k → 650k top-3 average;
 peak 2.15×). "Volume is a dial" survives the optimization work.
 
-**Bottom line:** AWS matches Confluent's measured peak at **$1.21/hr vs
-$3.36/hr of compute** and delivers ~4× the throughput per dollar
-(~291–328k msgs/s per $/hr vs ~69k). Confluent's counterweights remain
+**Bottom line (corrected to full infra TCO in Phase 11 review):** the $/hr
+figures in the ladder are *Flink compute only*. Full infra TCO at the
+floor: AWS = $1.21 KPUs + $0.75 MSK cluster base + $0.43 partition-hours
+(288 partitions — the 48-partition tuning has a price on AWS)
+≈ **$2.39/hr**; Confluent = $3.36 Flink + eCKU throughput charges
+(no partition or cluster-base fees at all — 48 buckets are free there)
+≈ **$3.7–4.2/hr**. AWS matches Confluent's measured peak roughly **40%
+cheaper on infra TCO** (64% cheaper on compute alone), and delivers ~4×
+the throughput per compute dollar (~291–328k msgs/s per $/hr vs ~69k). Confluent's counterweights remain
 real: zero pipeline code (~200 lines of SQL), no jar/VPC/image builds, and
 cheaper per-GB networking at very high data volumes — the cost crossover
 math is in the Phase 9 section.
