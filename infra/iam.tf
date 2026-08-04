@@ -13,6 +13,8 @@ locals {
       "kafka-cluster:Connect",
       "kafka-cluster:DescribeCluster",
       "kafka-cluster:CreateTopic",
+      "kafka-cluster:DeleteTopic",
+      "kafka-cluster:AlterTopic",
       "kafka-cluster:DescribeTopic",
       "kafka-cluster:WriteData",
       "kafka-cluster:ReadData",

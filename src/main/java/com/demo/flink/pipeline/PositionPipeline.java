@@ -43,6 +43,10 @@ public final class PositionPipeline {
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
         long dedupTtlMs = params.getLong("dedup.state.ttl.ms", 3_600_000L);
         long mvRevalIntervalMs = params.getLong("mv.reval.interval.ms", 250L);
+        // 0 = emit a snapshot per applied trade (lowest latency, default);
+        // >0 = conflate emission per key to one snapshot per interval
+        // (throughput mode — final state identical after quiesce).
+        long emitIntervalMs = params.getLong("emit.interval.ms", 0L);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         if (params.has("pipeline.parallelism")) {
@@ -77,7 +81,7 @@ public final class PositionPipeline {
         // --- Output 1: position by account+ticker ---
         DataStream<Position> accountPositions = deduped
                 .keyBy(t -> t.account + "|" + t.ticker)
-                .process(new PositionAggregator())
+                .process(new PositionAggregator(emitIntervalMs))
                 .name("position-by-account-ticker").uid("position-by-account-ticker");
 
         accountPositions
@@ -88,7 +92,7 @@ public final class PositionPipeline {
         // --- Output 2: position by ticker ---
         DataStream<TickerPosition> tickerPositions = deduped
                 .keyBy(t -> t.ticker)
-                .process(new TickerPositionAggregator())
+                .process(new TickerPositionAggregator(emitIntervalMs))
                 .name("position-by-ticker").uid("position-by-ticker");
 
         tickerPositions

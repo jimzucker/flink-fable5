@@ -20,7 +20,8 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
 | **Scaling proven on AWS** | P=2→4→8 = 16.5k→52k→97k msgs/s at saturation — config-only rescales, zero job restarts ([ladder](docs/PERF_RESULTS.md)) |
-| **Same results on a second cloud** | Rewritten in Flink SQL on Confluent Cloud: same 5 checks pass, 232k msgs/s measured (2.1× the AWS finale), est. cost parity under ~10k msgs/s and ~40% less at the 110k job ([comparison](docs/PERF_RESULTS.md)) |
+| **Same results on a second cloud** | Rewritten in Flink SQL on Confluent Cloud: same 5 checks pass, 232.7k msgs/s measured — briefly the record ([comparison](docs/PERF_RESULTS.md)) |
+| **Tuned, AWS retook the record — cheaper** | Same drain method: tuning (+89%) took 12 KPUs to 435k msgs/s; **10 KPUs ($1.21/hr) matches Confluent's 232.7k peak at 36% of its compute cost**; 20 KPUs hit 757.6k, exactly 2× the 10-KPU floor — linear survives tuning ([Phase 10](docs/PERF_RESULTS.md)) |
 
 ## Architecture
 
@@ -246,8 +247,11 @@ suite → AWS IaC → load tests → price-storm conflation (a Phase 7 born from
 review finding — the fan-out bottleneck was predicted by a human, then proven
 and fixed the same day) → AWS deployment + the measured scaling ladder
 (Phase 8) → the Confluent Cloud edition, proven equivalent by the same
-validation suite (Phase 9). Git history mirrors it: one squash commit per
-phase, tagged `Phase-2`…`Phase-9`, with the detailed history preserved on the
+validation suite (Phase 9) → efficiency parity: emission-conflation tuning
+(+89%), the 10-KPU cost floor matching Confluent's peak at a third of the
+compute cost, and linear scale-up re-proven with all tuning applied
+(Phase 10). Git history mirrors it: one squash commit per
+phase, tagged `Phase-2`…`Phase-10`, with the detailed history preserved on the
 phase branches. Executive summary deck:
 [docs/flink-demo-exec-briefing.pptx](docs/flink-demo-exec-briefing.pptx).
 The story, in ~530 words:

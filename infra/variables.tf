@@ -21,6 +21,30 @@ variable "flink_parallelism" {
   default     = 2
 }
 
+variable "topics_partitions" {
+  description = "Partition count for topics (created or grown by the generator)"
+  type        = number
+  default     = 16
+}
+
+variable "topics_recreate" {
+  description = "Delete and recreate topics on generator start (clean partition layout for drain tests)"
+  type        = bool
+  default     = false
+}
+
+variable "kafka_extra_props" {
+  description = "Extra kafka.props.* passthrough entries for the Flink app (e.g. sink batching: linger.ms, batch.size, compression.type)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "flink_extra_props" {
+  description = "Extra raw app properties for the Flink app (e.g. emit.interval.ms for conflated output emission)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "flink_parallelism_per_kpu" {
   type    = number
   default = 1
