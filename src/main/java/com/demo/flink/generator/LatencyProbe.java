@@ -26,6 +26,11 @@ import java.util.regex.Pattern;
 public class LatencyProbe {
 
     private static final Pattern FIELD = Pattern.compile("\"(as_of|event_time)\"\\s*:\\s*(\\d+)");
+    private static final Pattern MV = Pattern.compile(
+            "\"net_qty\"\\s*:\\s*(-?\\d+).*\"price\"\\s*:\\s*\"([0-9.]+)\".*\"mv\"\\s*:\\s*\"(-?[0-9.]+)\"");
+
+    private static long mathChecked = 0;
+    private static long mathBad = 0;
 
     public static void main(String[] args) throws Exception {
         AppConfig params = AppConfig.load(args);
@@ -48,6 +53,18 @@ public class LatencyProbe {
             while (System.currentTimeMillis() < end) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
                 for (ConsumerRecord<String, String> record : records) {
+                    if (record.value() == null) {
+                        continue; // upsert tombstone
+                    }
+                    Matcher mv = MV.matcher(record.value());
+                    if (mv.find()) {
+                        mathChecked++;
+                        java.math.BigDecimal expect = new java.math.BigDecimal(mv.group(2))
+                                .multiply(new java.math.BigDecimal(mv.group(1)));
+                        if (expect.compareTo(new java.math.BigDecimal(mv.group(3))) != 0) {
+                            mathBad++;
+                        }
+                    }
                     Matcher m = FIELD.matcher(record.value());
                     if (m.find()) {
                         long eventTime = Long.parseLong(m.group(2));
@@ -60,6 +77,10 @@ public class LatencyProbe {
             }
         }
         Collections.sort(latencies);
+        if (params.getBoolean("probe.verify.math", false)) {
+            System.out.printf("math-verify: topic=%s checked=%d mismatches=%d%n",
+                    topic, mathChecked, mathBad);
+        }
         if (latencies.isEmpty()) {
             System.out.println("latency-probe: topic=" + topic + " NO RECORDS OBSERVED");
             return;
