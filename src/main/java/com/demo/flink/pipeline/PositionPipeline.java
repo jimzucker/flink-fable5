@@ -42,11 +42,19 @@ public final class PositionPipeline {
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
         long dedupTtlMs = params.getLong("dedup.state.ttl.ms", 3_600_000L);
-        long mvRevalIntervalMs = params.getLong("mv.reval.interval.ms", 250L);
-        // 0 = emit a snapshot per applied trade (lowest latency, default);
-        // >0 = conflate emission per key to one snapshot per interval
-        // (throughput mode — final state identical after quiesce).
-        long emitIntervalMs = params.getLong("emit.interval.ms", 0L);
+        // CR-1: output cadence is capped to human reading speed. Both knobs are
+        // ceilings on OUTPUT rate per key; state always carries the newest value
+        // and re-valuation happens at emit time, so an emitted record is never
+        // staler than its own interval. 0 = per-event (lowest latency).
+        //   position.emit.interval.ms — default 500 ms (positions)
+        //   mv.emit.interval.ms       — default 1000 ms (market values)
+        // mv.emit.interval.ms also governs price-driven re-valuation: one timer
+        // serves both, so nothing is computed that is not emitted. The legacy
+        // mv.reval.interval.ms is honoured as a fallback.
+        long emitIntervalMs = params.getLong("position.emit.interval.ms",
+                params.getLong("emit.interval.ms", 500L));
+        long mvRevalIntervalMs = params.getLong("mv.emit.interval.ms",
+                params.getLong("mv.reval.interval.ms", 1000L));
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         if (params.has("pipeline.parallelism")) {
