@@ -1,0 +1,114 @@
+Phase 14 — Key salting: can Confluent scale past its key count? (2026-08-04)
+=============================================================================
+
+PROMPT 14
+---------
+"lets look at the problem in SQL with only 10 keys, in streaming there is a
+strategy to map in this case by creating a dummy key to shard the data then
+reduce by the true key allowing to spread the load and leverage more cpu,
+does this sound like a strategy we can use on the confluent" -> "i am
+addressing where confluent could not increase perf due to only 10 keys" ->
+"yes do it"
+
+THE PROBLEM BEING ADDRESSED
+----------------------------
+Phase 11 measured that Confluent throughput barely responds to compute:
+10 CFUs -> 265k msgs/s, 16 CFUs -> 287k (+8% for +60% compute). Diagnosis:
+Flink assigns one worker per key, the conflation stage keys on SYMBOL, and
+there are only 10 symbols — so worker 11 onward has nothing to do. Widening
+the data to 30 symbols lifted the same statement to 386k at constant
+compute, confirming key starvation rather than a compute ceiling.
+
+THE STRATEGY (user's, and it is the right one)
+-----------------------------------------------
+Two-phase / local-global aggregation with a synthetic salt:
+  phase 1: key on (symbol, salt), salt varies PER RECORD -> 8x the keys,
+           each shard independently picks its latest tick
+  phase 2: key on symbol, reduce the 8 candidates to the true latest
+Correct by associativity: max-by-timestamp of per-shard maxima IS the global
+maximum — the same argument that made the phase 7 conflation safe. The
+reduce stage is trivial (8 rows per symbol per window, not thousands).
+
+Note this is normally automatic in Flink via two-phase aggregation
+(table.optimizer.agg-phase-strategy / mini-batch), but phase 13 proved
+Confluent Cloud exposes NO table.exec/table.optimizer options — so the
+manual salt is the workaround precisely BECAUSE the automatic path is shut.
+
+IMPLEMENTATION NOTES (both learned the hard way)
+-------------------------------------------------
+1. The salt must vary per RECORD, not per key. Hashing the symbol yields a
+   constant per key and changes nothing. Used MOD(event_time, 8).
+2. Phase 2 cannot ORDER BY a time attribute: after TUMBLE every row in a
+   window shares the same window_time, so the ranking collapses. Carry
+   event_time through as a plain BIGINT and reduce with MAX_BY(val,
+   event_time) in a GROUP BY instead of a second ROW_NUMBER.
+
+TEST
+----
+Same 49M-record backlog, same deployable cap-20 pool, drain twice:
+  A. unsalted conflation  (the phase 11 baseline shape)
+  B. salted conflation    (8 shards -> 80 effective keys)
+Compare peak and sustained drain rate, and CFUs actually elected.
+PASS = salted materially exceeds unsalted AND elects more CFUs (i.e. the
+compute that was previously idle is now doing work).
+
+WHAT IT WOULD CHANGE
+---------------------
+If it works, the published finding "buying compute doesn't help on
+Confluent" becomes the more accurate and more favourable "doesn't help
+unless you widen the key space — which you can do artificially, in SQL,
+without touching the data". That is a materially better answer for anyone
+choosing the platform, which is why it is worth the rerun.
+
+It does NOT address CR-1 (output cadence) — salting is about parallelism,
+not about when a result is allowed to be emitted.
+
+RESULTS — THE STRATEGY WORKS
+-----------------------------
+Same 39,686,886-record backlog, same deployable cap-20 pool, same hour,
+only the salt differs:
+
+  Drain A — unsalted (10 keys):   peak 186,430 msgs/s   at 10 CFUs
+  Drain B — salted   (80 keys):   peak 345,621 msgs/s   at 10 CFUs
+                                  = +85% ON IDENTICAL COMPUTE
+
+Both drained the full backlog (per-minute totals reconcile to 39.8M each);
+A took 6 minutes, B took 5.
+
+The CFU count did NOT rise — which makes the result cleaner, not weaker.
+The win was not "the autoscaler bought more units"; it was the SAME ten
+units finally having enough independent keys to keep their parallel slots
+busy. That is precisely the key-starvation diagnosis, confirmed.
+
+WHAT THIS REVISES
+------------------
+Phase 11 published "buying compute doesn't help on Confluent; throughput
+tracks key cardinality". That was true but incomplete and unfair to the
+platform. The accurate version:
+  Throughput is bound by KEY PARALLELISM, not by compute — but you can
+  manufacture key parallelism in SQL, without touching the data or the
+  topic layout, and it is worth ~1.85x here.
+The earlier sharding failure (2 pools over 5 symbols each scored WORSE
+than 1 pool over 10) is the same law seen from the other side: splitting a
+narrow key space shrinks parallelism, salting widens it.
+
+TWO MORE CONFLUENT SQL LIMITATIONS FOUND
+-----------------------------------------
+1. MAX_BY does not exist ("Function 'MAX_BY(<CHARACTER>, <NUMERIC>)' does
+   not exist"), which is the natural way to reduce "the row with the
+   largest timestamp". Portable workaround: lexicographic encode —
+   LPAD the timestamp to fixed width, CONCAT it in front of the payload,
+   plain MAX (string order == numeric order once padded), then SUBSTRING
+   the prefix back off.
+2. Phase 2 cannot ORDER BY a time attribute because TUMBLE gives every row
+   in a window the same window_time; carry event_time as a plain BIGINT.
+
+HONEST LIMITS OF THIS TEST
+---------------------------
+- One run per arm (project-wide variance observed at +-13%), so treat
+  "+85%" as "clearly and substantially faster", not as a precise multiple.
+- Salt factor 8 was picked, not tuned; the optimum was not searched for.
+- Tested on the conflation stage only. The same trick should apply to the
+  position SUMs (sum of partial sums is associative) but was not measured.
+- Costs: an extra shuffle, 8x the window state, and a second aggregation
+  stage. Cheap at 80 keys; revisit if the salt factor grows.
