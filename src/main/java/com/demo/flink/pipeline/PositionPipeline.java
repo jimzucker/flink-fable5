@@ -39,6 +39,17 @@ public final class PositionPipeline {
     public static void main(String[] args) throws Exception {
         AppConfig params = AppConfig.load(args);
 
+        // One jar, two implementations of the same contract: pipeline.mode=sql
+        // runs the Flink SQL statement set instead of this DataStream graph.
+        String mode = params.get("pipeline.mode", "datastream").trim().toLowerCase();
+        if (mode.equals("sql")) {
+            SqlPipeline.run(params);
+            return;
+        }
+        if (!mode.equals("datastream")) {
+            throw new IllegalArgumentException("pipeline.mode must be datastream or sql (was: " + mode + ")");
+        }
+
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
         long dedupTtlMs = params.getLong("dedup.state.ttl.ms", 3_600_000L);
