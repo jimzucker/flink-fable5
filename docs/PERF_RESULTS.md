@@ -16,7 +16,7 @@ zero, measure the consumed rate. Latency is measured live, not from a drain.
 | **Single-stage ceiling** | 757,600 msgs/sec (20 KPUs) | 301,700 msgs/sec (deployable cap-20 pool) |
 | **Sustained live run**, 28 min | 232,705/sec, **σ = 30/sec**, zero restarts | 360,900/sec combined, σ = 63,900/sec |
 | **Cheapest config holding 232,700/sec** | **11 billed KPUs ≈ $2.39/hr all-in** | cap-20 pool ≈ $3.36/hr + usage |
-| **Scaling** | linear: 2× units → 2.0× throughput | flat vs units; scales with key cardinality |
+| **Scaling** | linear — doubling compute doubled throughput (10→20 units = 2.0×) | buying compute barely helped (10→16 units = +8%); throughput rose only when the data had more distinct keys (10→30 symbols = +28%) |
 | **Recovery** | restored from snapshot under load; 198,313 outputs re-verified, 0 errors | statement stopped 30 s mid-flow, resumed with state |
 | **Code to build it** | ~2,000 lines of Java | **~200 lines of SQL** |
 | **What you operate** | a jar, an image, a VPC | statements — no jar, no VPC, no images |
@@ -39,6 +39,19 @@ choice; only ~7× is real. Details: Phase 12 below.
 DataStream job publishes immediately (`AT_LEAST_ONCE`), while Confluent Cloud
 Flink commits transactionally at checkpoints. Configured alike, they would
 converge further — that comparison is untested and is listed as an open gap.
+
+**A note on what "scaling" means on each side.** Flink splits work by key, and
+each key must be handled by one worker so its running total stays consistent.
+That sets a ceiling: with ten stock symbols, only ten workers can ever be busy
+on a symbol-keyed stage, and extra machines sit idle. On AWS we had headroom
+(positions are keyed by account+ticker — 500 keys) so adding compute scaled
+cleanly. The Confluent statement we benchmarked was keyed by symbol, so buying
+compute did almost nothing and only widening the key space helped. Part of
+that contrast is the workload we chose to measure, not the platform — but the
+practical warning holds on both: **if a stage is key-starved, more money
+doesn't fix it, re-keying does.** It is also why the sharding test backfired:
+splitting ten symbols across two pools left each shard with five keys, and the
+pair scored worse than a single pool.
 
 **Choose by latency budget:** sub-second requirements belong on DataStream.
 Anything tolerating a couple of seconds gets built roughly ten times faster in
