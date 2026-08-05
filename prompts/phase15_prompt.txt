@@ -94,6 +94,48 @@ RISKS / WHAT COULD GO WRONG
   CONFIRMS CR-1 as a language finding rather than a platform one — a
   valuable result either way, and it is worth testing explicitly.
 
+15.1 BUILD COMPLETE (local, no cloud). SqlPipeline.java + planner test;
+27 tests green; bytecode 55; jar +7KB (all table deps 'provided' — MSF
+ships the Flink distribution, and the existing flink-connector-kafka
+already supplies the table factories, so no SQL connector was needed).
+
+TWO FINDINGS FROM THE BUILD THAT CHANGE THIS PHASE
+---------------------------------------------------
+(a) The Confluent TUMBLE conflation must NOT be copied blindly. Ported
+    literally, an idle price stream leaves the final tick in an unfired
+    window and the MV outputs converge to WRONG values — a validation
+    failure the DataStream job cannot have. Default is therefore
+    keep-last-row (the exact analogue of the DataStream lastPriceCents
+    value state); sql.price.conflate.ms=250 restores the Confluent shape.
+    => Cell B must be measured TWICE:
+         B1 default keep-last-row  -> the fair A-vs-B LANGUAGE comparison
+         B2 conflate.ms=250        -> the fair B-vs-C PLATFORM comparison
+(b) upsert-kafka exposes sink.buffer-flush.interval / .max-rows, which
+    gives per-key "newest value at most once per interval" — i.e. CR-1
+    semantics, enforced at the SINK rather than by an operator timer. The
+    build wired position.emit.interval.ms / mv.emit.interval.ms into it.
+    => ADD A TEST: run scripts/cadence_check.py against SQL-on-AWS. If it
+    passes, phase 13's conclusion is TOO HARSH and must be revised: rate
+    limiting is not a SQL-language limitation at all, it is that
+    Confluent's managed tables do not expose the sink option. That is a
+    materially fairer verdict and it must be corrected if true.
+    => ALSO re-check on Confluent whether any equivalent sink buffering is
+    exposed there before restating the CR-1 finding.
+
+KNOWN GAPS IN CELL B (recorded, not hidden)
+--------------------------------------------
+- Dedup state has NO TTL in SQL: table.exec.state.ttl is job-wide and
+  would also expire the position aggregates (silently changing answers);
+  the STATE_TTL hint does not cover deduplication. So the SQL job's
+  trade_id state grows unbounded. Exposed as sql.state.ttl.ms default 0.
+- No operator uids in SQL; savepoint restore across a topology change
+  needs CompiledPlan.
+- positions as_of is MAX(event_time), not last-applied event time (same
+  substitution the proven Confluent SQL makes).
+- Account-level sinks get an extra SinkUpsertMaterializer because the
+  planner cannot prove CONCAT(account,'|',ticker) is a bijection of the
+  group key — extra state the DataStream job does not carry.
+
 RESULTS
 -------
-[pending approval]
+[executing 15.3 — AWS cells A, B1, B2]
