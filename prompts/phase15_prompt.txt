@@ -1,0 +1,99 @@
+Phase 15 — Isolate language from platform; rebuild the bottom line (plan)
+==========================================================================
+
+PROMPT 15
+---------
+"can we retest confluent throughput and cost with the fused version? and run
+sql on aws to isolate the language from the platform? create a plan for a new
+phase. we should make our lens latency/throughput/ability to scale
+linearly/cost and language tech(cloud) ie DataStream(AWS) or SQL(Confluent)
+or SQL(AWS) and revise our comparison bottom line on most tuned version of
+each and revise as we tune"
+
+WHY THIS PHASE EXISTS (two known defects in the current scoreboard)
+--------------------------------------------------------------------
+1. CONFOUNDED THROUGHPUT. The published "Confluent 127k full pipeline" came
+   from the CHAINED topology that phase 12 proved was a 15x latency mistake.
+   It was never re-measured after fusing. It is almost certainly wrong-low
+   and unfair to Confluent.
+2. CONFOUNDED COMPARISON. Every number pairs "Java on AWS" against "SQL on
+   Confluent" — two variables moving at once (programming model AND
+   platform), plus a third we later found: delivery guarantee (our
+   DataStream ran AT_LEAST_ONCE and published immediately; Confluent runs
+   exactly-once and publishes at checkpoint commits). We cannot currently
+   say how much of the 7x latency gap is language, platform, or safety
+   setting.
+
+THE MATRIX (one cell is impossible, which is itself a finding)
+---------------------------------------------------------------
+                    AWS Managed Flink        Confluent Cloud
+  DataStream        A  (measured)            IMPOSSIBLE - no DataStream API
+  SQL               B  (NEW - this phase)    C  (retest fused)
+
+Adding cell B is what isolates the variables:
+  A -> B  = the LANGUAGE delta   (same cloud, same guarantee, Java vs SQL)
+  B -> C  = the PLATFORM delta   (same language, AWS vs Confluent)
+  and within B, at-least-once vs exactly-once = the GUARANTEE delta,
+  which is the suspected bulk of the residual.
+
+THE FOUR LENSES (every cell measured on all four)
+--------------------------------------------------
+  L1 LATENCY        p50/p95/p99, live steady feed, same LatencyProbe
+  L2 THROUGHPUT     full-pipeline backlog drain, same method both clouds
+  L3 LINEAR SCALE   2x the compute -> what multiple of throughput?
+  L4 COST           infra TCO $/hr at equal work (not compute-only)
+
+WORK ITEMS
+----------
+15.1 BUILD cell B: SqlPipeline.java — the same four outputs expressed as
+     Flink SQL via TableEnvironment, fused into ONE StatementSet (matching
+     Confluent's best-known shape, phase 12). Kafka connectors configured
+     for MSK IAM. Selected at runtime by a config property
+     (pipeline.mode=datastream|sql) so the SAME JAR serves both cells and
+     Terraform needs no new main class.
+     Dependency risk: needs flink-table-planner / flink-table-runtime /
+     flink-sql-connector-kafka. MSF ships the Flink distribution, so most
+     should be 'provided'; the SQL Kafka connector may need shading. If the
+     jar cannot be made to work on MSF, that is itself a reportable result.
+15.2 VERIFY cell B correctness before benchmarking it: the unchanged
+     5-check validation suite must pass. A fast pipeline that computes the
+     wrong answer is not a data point.
+15.3 MEASURE A and B on the SAME AWS stack, same day, same hardware —
+     swap the property, no redeploy. Both at AT_LEAST_ONCE first (isolates
+     language), then B again at EXACTLY_ONCE (isolates guarantee).
+15.4 MEASURE C: redeploy Confluent, run the FUSED statement set, and take
+     full-pipeline throughput + cost + linear-scale, not just latency.
+     This replaces the confounded 127k.
+15.5 REBUILD THE BOTTOM LINE from the best-tuned configuration of each
+     cell, on all four lenses, with the tech/language dimension explicit.
+
+STANDING RULE (user's, adopted for the rest of the project)
+------------------------------------------------------------
+The scoreboard always reflects the MOST TUNED known version of each cell,
+and is revised whenever tuning improves one. Any number carried forward
+from an older, less-tuned configuration must be labelled as such or
+re-measured. (This phase exists because we broke that rule once already.)
+
+SEQUENCING (cost-aware)
+------------------------
+Deploy AWS once, measure A and B and B-exactly-once by swapping config.
+Deploy Confluent once, measure C fused. Auto-teardown both when the cell's
+measurements are done (standing order). Est. 3-4 h, ~$25-35.
+
+REVIEW GATES
+------------
+(a) this plan; (b) cell B validation green before any B benchmark;
+(c) the rebuilt bottom line before it replaces the published one.
+
+RISKS / WHAT COULD GO WRONG
+----------------------------
+- The SQL-on-MSF jar may hit dependency or connector problems (this is the
+  main schedule risk). Report honestly if so.
+- SQL-on-AWS may not be able to express the CR-1 cadence cap either, since
+  that was a SQL-language limit rather than a Confluent one. If so, that
+  CONFIRMS CR-1 as a language finding rather than a platform one — a
+  valuable result either way, and it is worth testing explicitly.
+
+RESULTS
+-------
+[pending approval]
