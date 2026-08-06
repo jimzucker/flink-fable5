@@ -231,3 +231,26 @@ the remaining plan inside ONE background command with internal wait-loops.
 That process was killed and everything behind it died with it; nothing was
 left to wake me. Correct pattern is one step per task, each launched from
 the previous step's completion notification.
+
+SQL-ON-AWS COLUMN CLOSED (throughput / scaling / cost)
+-------------------------------------------------------
+Measured at at-least-once + uncapped emission to match the conditions of the
+existing DataStream 435k figure, so the throughput ROW is internally
+comparable (do NOT compare across rows — the latency row is exactly-once
+with CR-1 caps).
+
+  throughput  P=20  20,086/s (AUTO)  ->  22,823/s (upsert-materialize=NONE)
+  throughput  P=40  51,159/s
+  scaling     2x parallelism -> 2.55x throughput (>= linear)
+  vs DataStream 435,000/s on the identical config = ~19x slower
+
+TUNING HYPOTHESIS TESTED AND REJECTED: the plan inserts a
+SinkUpsertMaterializer because the planner cannot prove
+CONCAT(account,'|',ticker) is a bijection of the GROUP BY key. It measured
+218,971 records/sec of internal churn — 10x the pipeline's own source
+consumption — so it looked like the obvious bottleneck.
+table.exec.sink.upsert-materialize=NONE removed it entirely (0/s confirmed)
+and bought only ~14%. Expensive, but NOT the bottleneck. The SQL-on-AWS
+penalty is structural.
+Lesson: a hot operator is not automatically the constraint. Measure the fix,
+do not assume it.

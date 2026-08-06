@@ -90,6 +90,18 @@ public final class SqlPipeline {
         if (stateTtlMs > 0) {
             conf.put("table.exec.state.ttl", stateTtlMs + " ms");
         }
+        // The account-level sinks are keyed CONCAT(account,'|',ticker), which the
+        // planner cannot prove is a bijection of the GROUP BY key, so it inserts a
+        // SinkUpsertMaterializer — an extra stateful operator the DataStream job
+        // does not have. Measured at parallelism 20 it moved ~219k records/sec,
+        // roughly ten times the pipeline's own source consumption. It is provably
+        // unnecessary for this topology (the concatenation IS injective over the
+        // group key), so NONE is safe here. Values: AUTO (Flink default) | NONE |
+        // FORCE.
+        String upsertMat = params.get("sql.sink.upsert.materialize", "AUTO");
+        if (!"AUTO".equalsIgnoreCase(upsertMat)) {
+            conf.put("table.exec.sink.upsert-materialize", upsertMat.toUpperCase());
+        }
         conf.forEach((k, v) -> tableEnv.getConfig().getConfiguration().setString(k, v));
     }
 

@@ -7,6 +7,30 @@
 > platform, and delivery guarantee. Adding *SQL on AWS* as a third cell
 > isolates them, and it changes the advice.
 
+### The four-lens matrix (tuned configuration of each)
+
+| | **DataStream (AWS)** | **SQL (AWS)** | **SQL (Confluent)** |
+|---|---|---|---|
+| **Latency** p50 / p99 | **603 ms** / 1,000 ms | 4.5–8.7 s / 35.4 s | **1,966 ms** / 2,372 ms |
+| **Throughput** (source consumption) | **435,000/s** | 22,823/s @ P20 · 51,159/s @ P40 | 11k/s sustained; ceiling not isolated |
+| **Scales linearly** | ✅ 2× units → 2.0× | ✅ 2× units → 2.55× | ✖ flat on compute; +85% via key salting |
+| **Cost** | ~$2.39/hr all-in | same infra, ~19× worse per unit of work | ~$3.36/hr + usage |
+
+**DataStream wins every runtime lens.** Between the two SQL options **Confluent
+wins decisively** — same language, 2–4× lower latency, and a 1.2× p50→p99
+spread against AWS's 8×. **SQL on AWS is the worst cell on every lens**, which
+is the non-obvious result: "we're already on AWS, so we'll write SQL there" is
+the choice this matrix exists to warn against.
+
+*A tuning hypothesis tested and rejected:* the SQL plan inserts a
+`SinkUpsertMaterializer` (the planner cannot prove `CONCAT(account,'|',ticker)`
+is a bijection of the group key) which measured **218,971 records/sec of
+internal churn — ten times the pipeline's own consumption**. Setting
+`table.exec.sink.upsert-materialize=NONE` removed it completely (0/s), but
+throughput rose only 20,086 → 22,823/s, about **14%**. So the operator was
+expensive but not the bottleneck, and the SQL-on-AWS penalty is structural
+rather than a bad default. The figures above are the tuned ones.
+
 ### Latency, one variable at a time
 
 All three measured on the same day with the same probe, the same 11k msgs/sec
