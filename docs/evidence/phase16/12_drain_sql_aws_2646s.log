@@ -1,0 +1,22 @@
+=== 1/4 assert SQL mode (a cell that silently ran DataStream is worthless) ===
+  pipeline.mode        = sql
+  sql.price.salt.factor= 8
+  sql.price.conflate.ms= 250
+  delivery             = exactly-once
+=== 2/4 start app ===
+app RUNNING at 19:05:47Z
+=== 3/4 detect drain start + health gate ===
+  waiting, rate=None
+  waiting, rate=0.0
+  waiting, rate=0.0
+  waiting, rate=723.2666666666667
+  waiting, rate=723.2666666666667
+DRAIN_START=19:08:21Z rate=2218.3333333333335
+healthy (restarts 0.0->0.0) — measuring
+=== 4/4 time to completion ===
+19:10:23Z rate=2218.3333333333335
+19:11:23Z rate=4500.266666666666
+19:12:24Z rate=16551.416666666668
+19:13:24Z rate=16551.416666666668
+19:14:25Z rate=16551.416666666668
+19:15:26Z rate=19893.75

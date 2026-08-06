@@ -391,3 +391,32 @@ Health/validity evidence for the salted run:
 RETIRE THE OLD 435k/s AWS NUMBER until re-measured. It predates exactly-once
 and CR-1 and was taken at a different parallelism; it is not comparable to
 anything measured here.
+
+RUN B RESULTS — AWS SQL (same platform, same load: isolates LANGUAGE)
+--------------------------------------------------------------------------
+Identical everything except pipeline.mode: P=20, exactly-once, 48 partitions,
+salt factor 8, sql.price.conflate.ms=250 (matches Confluent's 0.25s TUMBLE),
+CR-1 OFF on both SQL cells (Confluent cannot express it, so capping only AWS
+would compare a capability gap as if it were a speed gap).
+
+  DataStream          143.68M / 982s   = ~146,300 rec/s
+  SQL (AWS)          ~144M   / 2646s   =  ~54,400 rec/s   => DataStream 2.69x
+  DataStream unsalted ~140M  / 2613s   =  ~53,600 rec/s   (control, for scale)
+
+SQL-on-AWS lands almost exactly where UNSALTED DataStream did (54.4k vs 53.6k).
+Two different handicaps converging on one ceiling points at the same root
+cause -- the ten-ticker narrow stages -- with SQL unable to exploit the salt as
+well as the hand-written operator does. Same salt, same key space, different
+payoff: the DataStream conflator drops a tick the moment a newer one arrives,
+whereas the SQL ROW_NUMBER dedup materialises the window before reducing it.
+
+RAMP MATTERS, AND PEAK THROUGHPUT HIDES IT: sustained rates were 29k (SQL) vs
+31-42k (DataStream) -- much closer than the 2.69x drain-time ratio -- because
+SQL took ~4 min to reach steady state against DataStream's ~1. Quote drain
+time, or quote peak AND ramp; peak alone flatters SQL.
+
+Cell validated as genuinely SQL three ways: pipeline.mode asserted pre-measure,
+salt/conflate properties present, and CloudWatch operator names were SQL plan
+operators (Deduplicate_19, Calc_20) rather than the DataStream UIDs. Note this
+also means aws_perf_probe.py's TaskOperator filters read ZERO in SQL mode --
+another reason records/elapsed is the primary measure.
