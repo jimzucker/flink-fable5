@@ -288,3 +288,45 @@ TTL warning = the known SQL limitation: table.exec.state.ttl is JOB-WIDE, so
 it cannot be scoped to dedup the way the DataStream job scopes
 dedup.state.ttl.ms. Setting it would also expire the position aggregates and
 silently change the answers. Unresolved.
+
+GAP FOUND BY USER: THE AWS PIPELINE IS NOT SALTED
+--------------------------------------------------------------------------
+Question: "does the AWS test apply the same salted tuning?"  Answer: NO.
+
+grep for salt|localAgg|two-phase|preAgg across src/main/java => ZERO hits.
+The six AWS keyBy stages (PositionPipeline.java:99-143):
+  :99   keyBy(p -> p.symbol)                  10 keys   NARROW  unsalted
+  :103  keyBy(t -> t.tradeId)                 millions  wide
+  :109  keyBy(t -> t.account + "|" + t.ticker) wide
+  :120  keyBy(t -> t.ticker)                  10 keys   NARROW  unsalted
+  :131  keyBy(p -> p.ticker)   <- MV by ACCOUNT+ticker  10 keys NARROW unsalted
+  :143  keyBy(p -> p.ticker)                  10 keys   NARROW  unsalted
+
+FOUR of six stages sit on a 10-value key space, including :131 — the heaviest
+output (market value by account+ticker) is keyed by TICKER ALONE because it
+has to join the broadcast-ish price stream. So the widest fan-out work in the
+job funnels through 10 keys. This is the SAME key-starvation structure that
+capped Confluent, and AWS never got the salting fix that Confluent got.
+
+WHICH DIRECTION THIS BIASES:
+  throughput / latency / cost — AWS won WITHOUT this tuning while Confluent
+    had it. So AWS's margin is UNDERSTATED. Those conclusions stand and are
+    conservative.
+  SCALING — biased the other way and NOT safe. We were about to judge
+    "once tuned, how does Confluent scale?" on a salted config while AWS's
+    linear-scaling proof (phase 10.3b) was measured UNSALTED. With four
+    stages pinned at 10 keys, AWS parallelism above ~10 cannot help those
+    operators, so the AWS linear-scaling claim needs re-examination: either
+    the ceiling was set elsewhere, or it holds only to about P=10.
+
+=> "most tuned version of each" is NOT yet true for AWS. To close it, apply
+   the same two-phase salt to the four narrow keyBy stages and re-run.
+
+CONFLUENT OPERATOR FEEDBACK — official fix confirmed
+--------------------------------------------------------------------------
+docs.confluent.io/cloud/current/flink/how-to-guides/resolve-common-query-problems.html
+  "Align the table's PRIMARY KEY with the columns that uniquely identify rows
+   in your query (typically your GROUP BY columns)."
+Our sinks are raw key/value topics so the PK must be the single `key` column;
+therefore the fix is to GROUP BY CONCAT(account,'|',ticker) rather than
+GROUP BY account, ticker. Unresolved warnings can drive a statement DEGRADED.
