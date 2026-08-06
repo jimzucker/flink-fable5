@@ -484,3 +484,29 @@ output. Its closeness to the verified Confluent number is weak evidence it was
 measuring real work, but it is not proof, and the AWS SQL cell must be re-run
 with table.exec.source.idle-timeout before "SQL is platform-independent" or any
 DataStream-vs-SQL ratio is published.
+
+SCALING VERDICT — OVERTURNS THE PUBLISHED CONCLUSION
+--------------------------------------------------------------------------
+  cap-10  36,681,336 consumed / 695s = 52,779 rec/s
+  cap-20  63,736,838 consumed / 807s = 78,980 rec/s
+  => 1.50x throughput for 2x CFUs (75% scaling efficiency)
+  Output verified non-zero on all four sinks at BOTH rungs.
+
+Backlogs differed (36.7M vs 63.7M) so RATES were compared, not drain times --
+cap-20 took LONGER in wall-clock (807s vs 695s) while being substantially
+faster per second. Comparing times here would have inverted the conclusion.
+
+WHAT THIS REPLACES: the earlier "10 -> 16 CFUs = +8%, the CFU dial saturates"
+finding. That was measured with 6-BUCKET tables, where a Flink source cannot
+use more than 6 subtasks however many CFUs are attached. Confluent was never
+given the chance to scale. At 48 buckets it returns +50% for 2x compute.
+
+WHY 1.50x AND NOT 2.0x -- and this is NOT a platform limit: four of six stages
+key on TEN TICKERS. The salted conflation parallelises across 80 shard keys and
+does scale; the downstream market-value stages stay pinned at ten and cannot
+absorb the extra CFUs. Any Flink deployment on any platform would hit this with
+a ten-key workload. Report it as a WORKLOAD ceiling, not a vendor one.
+
+The honest headline is therefore NOT "Confluent scales sub-linearly". It is:
+"once the partition ceiling is removed, Confluent scales 1.5x for 2x compute on
+a workload whose own key space caps it at ten-way parallelism downstream."
