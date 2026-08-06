@@ -182,6 +182,52 @@ outside — crash loop, no output, no error — but only one of them is true.
   restarts 0 across the window; ingest exactly at generator rate
   (parse_trade 1,000/s, parse_price 12,385/s).
 
-RESULTS
--------
-[executing — cell A latency, then cell B]
+RESULTS — THE MATRIX, AND IT CHANGES THE ADVICE
+-------------------------------------------------
+All three cells: same probe, same 11k msgs/sec live load, exactly-once,
+outputs re-verified exact.
+
+  A  DataStream / AWS        p50    603ms  p99  1,000ms   83,651 verified
+  B  SQL        / AWS        p50 4,552-8,705ms p99 35,412ms 32,640 verified
+  C  SQL        / Confluent  p50  1,966ms  p99  2,372ms   14,899 verified
+
+A -> B  = LANGUAGE cost: DataStream ~7-14x faster than SQL (same cloud,
+          same guarantee, same hardware, same hour — one variable).
+B -> C  = PLATFORM cost, AND IT RUNS THE OTHER WAY: the same SQL is 2-4x
+          FASTER on Confluent than on AWS, with a 20% p50->p99 spread vs
+          8x on AWS. Managed Flink SQL is Confluent's product; MSF is
+          generic Flink that accepts SQL.
+
+=> "AWS is faster" was only ever true for the DataStream cell. For SQL the
+   ranking inverts. The worst of the three options — SQL on AWS — is the one
+   nobody would have picked out without separating the variables.
+
+THROUGHPUT (the 127k replacement): PARTIALLY ANSWERED, stated honestly.
+  The fused pipeline sustained the full 11k msgs/sec live feed with ~2s
+  latency and no lag. Under in-cloud amplification the cluster reached
+  976,305 msgs/sec of aggregate consumption at 20 CFUs — but that figure
+  INCLUDES the six amplification statements, not just the fused pipeline,
+  and the per-statement metric needed to isolate it returned HTTP 400.
+  So: the fused topology's own ceiling remains UNMEASURED. The old 127k
+  (chained topology) should not be quoted as the fused number, and the
+  976k should not be quoted as the pipeline's throughput.
+
+BUGS FOUND AND FIXED THIS PHASE (all three failed SILENTLY):
+  1. Missing transactional IAM on MSK (WriteDataIdempotently,
+     AlterTransactionalId, DescribeTransactionalId + transactional-id ARN).
+     Crash-loop at every scale, no error. Nearly published as "exactly-once
+     is unsupported on MSF" — which was false.
+  2. Probe launched into the MSK CLUSTER's security group (a *flink*
+     wildcard match) so it had no route to Kafka; subscribe() turned that
+     into an empty poll loop. Misread THREE times as pipeline failures.
+     Fixed by deriving network config from the running generator service
+     (scripts/run_probe.sh) and using assign() so failures throw.
+  3. Exactness check used an ordered, quote-required regex; SQL emits a
+     different key order, so it matched nothing and printed
+     "checked=0 mismatches=0" — which reads like a pass.
+
+PROCESS FAILURE WORTH RECORDING: the phase idled overnight because I queued
+the remaining plan inside ONE background command with internal wait-loops.
+That process was killed and everything behind it died with it; nothing was
+left to wake me. Correct pattern is one step per task, each launched from
+the previous step's completion notification.
