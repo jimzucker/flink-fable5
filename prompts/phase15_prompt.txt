@@ -457,3 +457,30 @@ META-LESSON, and the expensive one: EVERY cell was validated on the INPUT side
 (records consumed, backpressure, restarts, checkpoints) and NEVER on the OUTPUT
 side. A pipeline that reads fast and writes nothing scores beautifully on a
 throughput metric. Assert non-zero SINK traffic before any drain number counts.
+
+RUN C RESULTS — Confluent SQL, cap-10, 48 buckets, salted, upsert-key fixed
+--------------------------------------------------------------------------
+  consumed 36,527,699 prices + 153,637 trades = 36.68M in 695s = ~52,800 rec/s
+  OUTPUT VERIFIED NON-ZERO: mv-by-account-ticker 2,016 / position-by-account-
+  ticker 426 / mv-by-ticker 402. Small by design -- the 250ms TUMBLE conflates
+  ticks and there are only 50 account|ticker keys, so a CORRECT pipeline emits
+  little. The test is non-zero, not large.
+
+THE CONVERGENCE WORTH EXPLAINING:
+  Confluent SQL (verified)      ~52,800/s
+  AWS SQL (output UNVERIFIED)   ~54,400/s
+  AWS DataStream UNSALTED       ~53,600/s
+  AWS DataStream SALTED        ~146,300/s
+Three configurations within 3% of each other and one 2.7x above them. The
+common factor in the slow three is that none of them gets parallel work past
+the ten-ticker narrowing: unsalted DataStream by construction, and BOTH SQL
+cells because the salted CTE does not buy what the hand-written conflator
+does. That the two SQL numbers land within 3% ACROSS CLOUDS is itself the
+finding -- SQL throughput here looks platform-independent, with the language
+(or rather what the planner will do with the salt) as the constraint.
+
+CAVEAT, stated because it changes the claim: the AWS SQL 54.4k has UNVERIFIED
+output. Its closeness to the verified Confluent number is weak evidence it was
+measuring real work, but it is not proof, and the AWS SQL cell must be re-run
+with table.exec.source.idle-timeout before "SQL is platform-independent" or any
+DataStream-vs-SQL ratio is published.
