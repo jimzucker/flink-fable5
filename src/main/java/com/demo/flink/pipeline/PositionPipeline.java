@@ -89,14 +89,33 @@ public final class PositionPipeline {
                 .flatMap(new ParseTradeFunction())
                 .name("parse-trade").uid("parse-trade");
 
-        KeyedStream<PriceCents, String> prices = env
+        DataStream<PriceCents> parsedPrices = env
                 .fromSource(
                         stringSource(params, params.get("topic.prices", "prices"), "flink-demo-prices"),
                         WatermarkStrategy.noWatermarks(), "prices-source")
                 .uid("prices-source")
                 .flatMap(new ParsePriceFunction())
-                .name("parse-price").uid("parse-price")
-                .keyBy(p -> p.symbol);
+                .name("parse-price").uid("parse-price");
+
+        // Optional phase 1 of two-phase (local-global) conflation. The
+        // market-value stages must key on ticker so a tick meets its holders,
+        // and with ten tickers only ten workers can ever be busy — every price
+        // record funnels through ten subtasks and compute past ten idles. This
+        // stage keys on (symbol, salt) first, multiplying the key space, and
+        // forwards only the newest tick per shard. Downstream re-keys on symbol
+        // and reduces the candidates; newest-of-newest is the global newest.
+        // Off by default (factor <= 1 adds no operator) so the baseline
+        // topology is unchanged unless the experiment asks for it.
+        int saltFactor = params.getInt("price.salt.factor", 1);
+        long localConflateMs = params.getLong("price.salt.conflate.ms", mvRevalIntervalMs);
+        DataStream<PriceCents> pricesParsed = parsedPrices;
+        if (saltFactor > 1) {
+            pricesParsed = parsedPrices
+                    .keyBy(p -> LocalPriceConflator.saltedKey(p, saltFactor))
+                    .process(new LocalPriceConflator(localConflateMs))
+                    .name("price-conflate-local").uid("price-conflate-local");
+        }
+        KeyedStream<PriceCents, String> prices = pricesParsed.keyBy(p -> p.symbol);
 
         // --- Dedup ---
         DataStream<Trade> deduped = trades
