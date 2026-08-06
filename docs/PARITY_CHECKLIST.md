@@ -81,6 +81,16 @@ was measured below or above that ceiling.
 
 ### 3. Partition counts differ â€” and this one caps scaling
 
+Set to **48 on both** (was AWS 16 / Confluent 6).
+
+**The rule: partitions >= the highest parallelism under test.** A Flink source
+cannot read a topic with more parallelism than it has partitions, so every
+subtask past the partition count sits idle holding compute you are paying for.
+Testing a P=40 rung against 16 partitions measures the partition count, not the
+platform. 48 covers P=40 with headroom.
+
+Historical values, both of which throttled runs:
+
 | | Source topics | Sinks |
 |---|---|---|
 | AWS | 16 (`topics_partitions` default) | 16 |
@@ -100,15 +110,22 @@ created after 2024-04-16, which this one is) have **no per-partition charge** â€
 billing is eCKU, ingress/egress and storage. Per-partition pricing existed only
 in the legacy Base+Partitions model.
 
-| | Per-partition cost | 96 partitions (16 x 6 topics) |
-|---|---|---|
-| AWS MSK | $0.0015/partition-hr | ~$0.14/hr, ~$105/mo |
-| Confluent Basic (eCKU) | $0 | $0 |
+At the 48 setting, across 6 topics = 288 partitions:
 
-So partition count is a **cost knob on AWS and free on Confluent**, and the
-fair-comparison fix runs in the cheap direction. Match UPWARD (Confluent to
-16): matching downward would save AWS money but cap both sides at 6 and hide
-the scaling behaviour being measured.
+| | Per-partition cost | 288 partitions (48 x 6 topics) |
+|---|---|---|
+| AWS MSK | $0.0015/partition-hr | **~$0.43/hr, ~$315/mo** |
+| Confluent Basic (eCKU) | $0 | **$0** |
+
+So partition count is a **cost knob on AWS and free on Confluent**, and this is
+a finding in its own right rather than a footnote: **on AWS, using your compute
+efficiently costs extra money.** Reaching full utilisation at P=40 requires
+buying 288 partition-hours; the identical change on Confluent is free. Any TCO
+comparison that prices compute but not the partitions needed to keep that
+compute busy is understating AWS.
+
+Matched UPWARD rather than down. Matching downward would save AWS money but cap
+both sides and hide the scaling behaviour being measured.
 
 ## Verifying the upsert-key row
 

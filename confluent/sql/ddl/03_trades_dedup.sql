@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS `trades-dedup` (
   `key` STRING,
   `val` STRING
-) DISTRIBUTED BY HASH(`key`) INTO 16 BUCKETS
+) DISTRIBUTED BY HASH(`key`) INTO 48 BUCKETS
 WITH (
   'changelog.mode' = 'append',
   'key.format' = 'raw',

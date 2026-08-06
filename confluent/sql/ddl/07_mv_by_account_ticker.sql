@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS `mv-by-account-ticker` (
   `key` STRING,
   `val` STRING,
   PRIMARY KEY (`key`) NOT ENFORCED
-) DISTRIBUTED INTO 16 BUCKETS
+) DISTRIBUTED INTO 48 BUCKETS
 WITH (
   'changelog.mode' = 'upsert',
   'key.format' = 'raw',

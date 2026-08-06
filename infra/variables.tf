@@ -22,9 +22,9 @@ variable "flink_parallelism" {
 }
 
 variable "topics_partitions" {
-  description = "Partition count for topics (created or grown by the generator)"
+  description = "Partition count for topics (created or grown by the generator). Must be >= the highest parallelism under test: a Flink source cannot read a topic with more parallelism than it has partitions, so subtasks past the partition count sit idle. 48 covers the P=40 scaling rung with headroom. This is a BILLED dimension on MSK ($0.0015/partition-hr) and free on Confluent's eCKU model."
   type        = number
-  default     = 16
+  default     = 48
 }
 
 variable "topics_recreate" {
