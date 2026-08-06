@@ -13,7 +13,7 @@
 |---|---|---|---|
 | **Latency** p50 / p99 | **603 ms** / 1,000 ms | 4.5–8.7 s / 35.4 s | **1,966 ms** / 2,372 ms |
 | **Throughput** (source consumption) | **435,000/s** | 22,823/s @ P20 · 51,159/s @ P40 | 11k/s sustained; ceiling not isolated |
-| **Scales linearly** | ✅ 2× units → 2.0× | ✅ 2× units → 2.55× | ✖ flat on compute; +85% via key salting |
+| **Scales linearly** | ✅ doubling compute doubled throughput (2.0×) | ✅ doubling compute gave 2.55× | ✖ **buying compute barely helped** (+60% compute → +8% throughput). Throughput rose only by giving the data more distinct keys: splitting each symbol into 8 artificial sub-keys took it 186k → 346k/s (+85%) at *the same* compute |
 | **Cost** | ~$2.39/hr all-in | same infra, ~19× worse per unit of work | ~$3.36/hr + usage |
 
 **DataStream wins every runtime lens.** Between the two SQL options **Confluent
