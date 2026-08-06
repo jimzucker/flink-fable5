@@ -26,9 +26,16 @@ import java.util.regex.Pattern;
 public class LatencyProbe {
 
     private static final Pattern FIELD = Pattern.compile("\"(as_of|event_time)\"\\s*:\\s*(\\d+)");
-    private static final Pattern MV = Pattern.compile(
-            "\"net_qty\"\\s*:\\s*(-?\\d+).*\"price\"\\s*:\\s*\"([0-9.]+)\".*\"mv\"\\s*:\\s*\"(-?[0-9.]+)\"");
+    // Fields are matched independently: JSON key order is not guaranteed (the
+    // SQL pipeline's JSON_OBJECT emits a different order than the DataStream
+    // serializer), and numeric fields may or may not be quoted. An ordered,
+    // quote-required pattern silently matched nothing and reported "checked=0",
+    // which reads like success rather than "the check never ran".
+    private static final Pattern QTY = Pattern.compile("\"net_qty\"\\s*:\\s*\"?(-?\\d+)\"?");
+    private static final Pattern PRICE = Pattern.compile("\"price\"\\s*:\\s*\"?(-?[0-9.]+)\"?");
+    private static final Pattern MVAL = Pattern.compile("\"mv\"\\s*:\\s*\"?(-?[0-9.]+)\"?");
 
+    private static String mathSample = null;
     private static long mathChecked = 0;
     private static long mathBad = 0;
 
@@ -67,14 +74,23 @@ public class LatencyProbe {
                     if (record.value() == null) {
                         continue; // upsert tombstone
                     }
-                    Matcher mv = MV.matcher(record.value());
-                    if (mv.find()) {
+                    Matcher q = QTY.matcher(record.value());
+                    Matcher p = PRICE.matcher(record.value());
+                    Matcher v = MVAL.matcher(record.value());
+                    if (q.find() && p.find() && v.find()) {
                         mathChecked++;
-                        java.math.BigDecimal expect = new java.math.BigDecimal(mv.group(2))
-                                .multiply(new java.math.BigDecimal(mv.group(1)));
-                        if (expect.compareTo(new java.math.BigDecimal(mv.group(3))) != 0) {
+                        java.math.BigDecimal expect = new java.math.BigDecimal(p.group(1))
+                                .multiply(new java.math.BigDecimal(q.group(1)));
+                        if (expect.compareTo(new java.math.BigDecimal(v.group(1))) != 0) {
                             mathBad++;
+                            if (mathBad <= 3) {
+                                System.out.println("math-verify MISMATCH: " + record.value());
+                            }
                         }
+                    } else if (mathSample == null) {
+                        // Keep one unmatched record so a zero count is diagnosable
+                        // instead of looking like a clean pass.
+                        mathSample = record.value();
                     }
                     Matcher m = FIELD.matcher(record.value());
                     if (m.find()) {
@@ -91,6 +107,9 @@ public class LatencyProbe {
         if (params.getBoolean("probe.verify.math", false)) {
             System.out.printf("math-verify: topic=%s checked=%d mismatches=%d%n",
                     topic, mathChecked, mathBad);
+            if (mathChecked == 0 && mathSample != null) {
+                System.out.println("math-verify: NO FIELDS MATCHED — sample record: " + mathSample);
+            }
         }
         if (latencies.isEmpty()) {
             System.out.println("latency-probe: topic=" + topic + " NO RECORDS OBSERVED");
