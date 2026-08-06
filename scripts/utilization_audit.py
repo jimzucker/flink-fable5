@@ -38,8 +38,11 @@ import sys
 # Keyed stages and their key cardinality for this workload. Cardinality is a
 # property of the DATA, not the config, so it is stated here rather than probed.
 # TICKERS is the narrow one and the reason salting exists.
+# Defaults mirror infra/variables.tf. Override with --accounts/--tickers when a
+# run uses different values -- cardinality drives every check below, so a stale
+# constant here silently invalidates the audit.
 TICKERS = 10
-ACCOUNTS = 50
+ACCOUNTS = 5
 # hot=True means the stage sees the RAW high-volume feed. A narrow stage on the
 # raw feed is a hard FAIL: it throttles the whole job. A narrow stage placed
 # AFTER conflation is expected and acceptable — it is narrow because the
@@ -160,7 +163,16 @@ if __name__ == "__main__":
     p.add_argument("--parallelism-per-kpu", type=int, default=4)
     p.add_argument("--cfus", type=int, default=10)
     p.add_argument("--partitions", type=int, default=None)
+    p.add_argument("--accounts", type=int, default=ACCOUNTS)
+    p.add_argument("--tickers", type=int, default=TICKERS)
     p.add_argument("--salted", action="store_true", default=True)
     p.add_argument("--no-salted", dest="salted", action="store_false")
     a = p.parse_args()
+    TICKERS = a.tickers
+    ACCOUNTS = a.accounts
+    STAGES[1] = ("position-by-account-ticker", "account|ticker", ACCOUNTS * TICKERS, "wide", True)
+    STAGES[2] = ("position-by-ticker", "ticker", TICKERS, "narrow, fed by deduped trades", False)
+    STAGES[3] = ("mv-by-account-ticker", "ticker", TICKERS, "narrow, post-conflation", False)
+    STAGES[4] = ("mv-by-ticker", "ticker", TICKERS, "narrow, post-conflation", False)
+    STAGES[5] = ("price-conflate-local", "symbol|salt", TICKERS * 8, "salted: tickers x factor 8", True)
     (aws if a.env == "aws" else confluent)(a)
