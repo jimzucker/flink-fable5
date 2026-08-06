@@ -90,14 +90,21 @@ public final class SqlPipeline {
         if (stateTtlMs > 0) {
             conf.put("table.exec.state.ttl", stateTtlMs + " ms");
         }
-        // The account-level sinks are keyed CONCAT(account,'|',ticker), which the
-        // planner cannot prove is a bijection of the GROUP BY key, so it inserts a
-        // SinkUpsertMaterializer — an extra stateful operator the DataStream job
-        // does not have. Measured at parallelism 20 it moved ~219k records/sec,
-        // roughly ten times the pipeline's own source consumption. It is provably
-        // unnecessary for this topology (the concatenation IS injective over the
-        // group key), so NONE is safe here. Values: AUTO (Flink default) | NONE |
-        // FORCE.
+        // Escape hatch for the SinkUpsertMaterializer — an extra stateful operator
+        // the DataStream job does not have, measured at parallelism 20 moving
+        // ~219k records/sec, roughly ten times the pipeline's own source
+        // consumption.
+        //
+        // Mostly obsolete now: POSITION_BY_ACCOUNT_TICKER_CTE groups on the
+        // concatenated key, so the planner derives an upsert key that matches the
+        // sink primary key and stops inserting the operator on its own. It still
+        // appears on mv-by-account-ticker, whose left upsert key is acct_key but
+        // whose join predicate is on ticker — a non-key column — so the planner
+        // cannot carry the key through the join. Fixing that properly needs a
+        // temporal join against a versioned table, which is not expressible
+        // against a CTE inside a fused statement set.
+        //
+        // Values: AUTO (Flink default) | NONE | FORCE.
         String upsertMat = params.get("sql.sink.upsert.materialize", "AUTO");
         if (!"AUTO".equalsIgnoreCase(upsertMat)) {
             conf.put("table.exec.sink.upsert-materialize", upsertMat.toUpperCase());
@@ -256,14 +263,34 @@ public final class SqlPipeline {
             + "  ) WHERE rn = 1\n"
             + ")";
 
+    /**
+     * Positions keyed by account+ticker.
+     *
+     * Groups on the CONCATENATED key rather than on its two components. That
+     * looks redundant but is the whole point: projecting
+     * CONCAT(account,'|',ticker) *after* a GROUP BY account,ticker destroys the
+     * upsert key the planner derived, so it can no longer prove the sink key is
+     * a bijection of the grouping key and inserts a correction operator
+     * (SinkUpsertMaterializer here, the same one Confluent names in its
+     * UPSERT_AND_PRIMARY_KEYS_DIFFERENT advisory). Grouping on the
+     * concatenation makes the upsert key a single column that matches the sink
+     * primary key. account and ticker are constant within a group, so MAX()
+     * over them is an identity, not an aggregation.
+     *
+     * Kept byte-for-byte equivalent to confluent/sql/optimized/statement_set.sql
+     * so the AWS-vs-Confluent SQL comparison isolates the platform, not the query.
+     */
     private static final String POSITION_BY_ACCOUNT_TICKER_CTE =
             "positions AS (\n"
-            + "  SELECT JSON_VALUE(`val`, '$.account') AS account,\n"
-            + "         JSON_VALUE(`val`, '$.ticker') AS ticker,\n"
+            + "  SELECT CONCAT(JSON_VALUE(`val`, '$.account'), '|',"
+            + " JSON_VALUE(`val`, '$.ticker')) AS acct_key,\n"
+            + "         MAX(JSON_VALUE(`val`, '$.account')) AS account,\n"
+            + "         MAX(JSON_VALUE(`val`, '$.ticker')) AS ticker,\n"
             + "         SUM(CAST(JSON_VALUE(`val`, '$.qty') AS BIGINT)) AS net_qty,\n"
             + "         MAX(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT)) AS as_of\n"
             + "  FROM deduped\n"
-            + "  GROUP BY JSON_VALUE(`val`, '$.account'), JSON_VALUE(`val`, '$.ticker')\n"
+            + "  GROUP BY CONCAT(JSON_VALUE(`val`, '$.account'), '|',"
+            + " JSON_VALUE(`val`, '$.ticker'))\n"
             + ")";
 
     private static final String POSITION_BY_TICKER_CTE =
@@ -331,7 +358,7 @@ public final class SqlPipeline {
     static String positionByAccountTickerSql() {
         return "INSERT INTO `" + SINK_POSITION_ACCOUNT_TICKER + "`\n"
                 + "WITH " + DEDUPED_CTE + ",\n" + POSITION_BY_ACCOUNT_TICKER_CTE + "\n"
-                + "SELECT CONCAT(account, '|', ticker),\n"
+                + "SELECT acct_key,\n"
                 + "       JSON_OBJECT('account' VALUE account, 'ticker' VALUE ticker,\n"
                 + "                   'net_qty' VALUE net_qty, 'as_of' VALUE as_of)\n"
                 + "FROM positions";
@@ -350,7 +377,7 @@ public final class SqlPipeline {
         return "INSERT INTO `" + SINK_MV_ACCOUNT_TICKER + "`\n"
                 + "WITH " + DEDUPED_CTE + ",\n" + POSITION_BY_ACCOUNT_TICKER_CTE + ",\n"
                 + latestPriceCte(params) + "\n"
-                + "SELECT CONCAT(p.account, '|', p.ticker),\n"
+                + "SELECT p.acct_key,\n"
                 + "       JSON_OBJECT('account' VALUE p.account, 'ticker' VALUE p.ticker,\n"
                 + "                   'net_qty' VALUE p.net_qty,\n"
                 + "                   'price' VALUE CAST(lp.price AS STRING),\n"
