@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS `prices-conflated` (
   `key` STRING,
   `val` STRING
-) DISTRIBUTED BY HASH(`key`) INTO 6 BUCKETS
+) DISTRIBUTED BY HASH(`key`) INTO 16 BUCKETS
 WITH (
   'changelog.mode' = 'append',
   'key.format' = 'raw',

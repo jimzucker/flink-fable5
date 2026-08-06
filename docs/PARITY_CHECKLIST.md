@@ -79,12 +79,36 @@ including the heaviest output — market value by account+ticker keys on
 cannot help those operators. Any linear-scaling claim needs to say whether it
 was measured below or above that ceiling.
 
-### 3. Sink partition counts differ
+### 3. Partition counts differ — and this one caps scaling
 
-Confluent sink tables are `DISTRIBUTED INTO 6 BUCKETS`; the AWS topics are
-created with `topics_partitions` (48 in the scaling runs). Sink parallelism is
-capped by partition count, so this is not a fair like-for-like as it stands.
-Match them before quoting sink-side throughput.
+| | Source topics | Sinks |
+|---|---|---|
+| AWS | 16 (`topics_partitions` default) | 16 |
+| Confluent | **6 buckets** | **6 buckets** |
+
+Buckets *are* partitions on the backing topic, and **a Flink source cannot read
+a topic with more parallelism than it has partitions**. Confluent's `prices` at
+6 buckets caps price reading at 6 subtasks no matter how many CFUs the pool
+has. That is a ceiling sitting *underneath* the key-starvation one, and it
+means every baseline Confluent scaling measurement is confounded — the
+`prices-bulk48` topic built for the drain test has 48 buckets precisely to lift
+it, but the baseline tables did not.
+
+**Cost of fixing it: zero on Confluent.** The deployed cluster is
+`{"kind": "Basic", "max_ecku": 50}`. Basic clusters on the eCKU model (orgs
+created after 2024-04-16, which this one is) have **no per-partition charge** —
+billing is eCKU, ingress/egress and storage. Per-partition pricing existed only
+in the legacy Base+Partitions model.
+
+| | Per-partition cost | 96 partitions (16 x 6 topics) |
+|---|---|---|
+| AWS MSK | $0.0015/partition-hr | ~$0.14/hr, ~$105/mo |
+| Confluent Basic (eCKU) | $0 | $0 |
+
+So partition count is a **cost knob on AWS and free on Confluent**, and the
+fair-comparison fix runs in the cheap direction. Match UPWARD (Confluent to
+16): matching downward would save AWS money but cap both sides at 6 and hide
+the scaling behaviour being measured.
 
 ## Verifying the upsert-key row
 
