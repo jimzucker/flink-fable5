@@ -74,13 +74,40 @@ conflated AS (
   -- forward so the latest-price deduplication has a time attribute to
   -- order by. (Needing a fresh $rowtime is exactly why the baseline
   -- wrote an intermediate topic here.)
-  SELECT `val`, window_time AS wt FROM (
-    SELECT `val`, window_time,
+  --
+  -- KEY SALTING (two-phase / local-global). Conflating on symbol alone gives
+  -- one worker per symbol, and with ten symbols only ten workers can ever be
+  -- busy no matter how large the pool is. Phase 1 partitions on
+  -- (symbol, salt) to multiply the key space; phase 2 reduces the salt
+  -- shards back to one row per symbol per window. Correct by associativity:
+  -- the newest of the per-shard newest IS the global newest.
+  --
+  -- The salt MUST vary per RECORD. Hashing the symbol yields a constant per
+  -- symbol and manufactures no parallelism at all; MOD over event_time
+  -- spreads consecutive ticks across shards evenly.
+  --
+  -- Both phases stay ROW_NUMBER rather than GROUP BY on purpose: dedup
+  -- preserves the time attribute, so `wt` remains orderable downstream. A
+  -- GROUP BY reduction would strip it, and after TUMBLE there is no other
+  -- time attribute left to recover (MAX_BY does not exist on Confluent, which
+  -- is why the standalone salted_conflate.sql had to fall back to a
+  -- lexicographic LPAD/CONCAT/MAX/SUBSTRING encode).
+  SELECT `val`, wt FROM (
+    SELECT `val`, wt, window_start, window_end, `$rowtime`,
+      -- phase 2: reduce the salt shards (at most 8 rows per symbol/window)
       ROW_NUMBER() OVER (PARTITION BY window_start, window_end,
                                       JSON_VALUE(`val`, '$.symbol')
-                         ORDER BY `$rowtime` DESC) AS rn
-    FROM TABLE(TUMBLE(TABLE `prices`, DESCRIPTOR(`$rowtime`), INTERVAL '0.25' SECOND))
-  ) WHERE rn = 1
+                         ORDER BY `$rowtime` DESC) AS rn2
+    FROM (
+      SELECT `val`, window_time AS wt, window_start, window_end, `$rowtime`,
+        -- phase 1: parallel across (symbol, salt)
+        ROW_NUMBER() OVER (PARTITION BY window_start, window_end,
+                                        JSON_VALUE(`val`, '$.symbol'),
+                                        MOD(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT), 8)
+                           ORDER BY `$rowtime` DESC) AS rn
+      FROM TABLE(TUMBLE(TABLE `prices`, DESCRIPTOR(`$rowtime`), INTERVAL '0.25' SECOND))
+    ) WHERE rn = 1
+  ) WHERE rn2 = 1
 ),
 latest_price AS (
   SELECT symbol, price, event_time FROM (
@@ -127,13 +154,40 @@ conflated AS (
   -- forward so the latest-price deduplication has a time attribute to
   -- order by. (Needing a fresh $rowtime is exactly why the baseline
   -- wrote an intermediate topic here.)
-  SELECT `val`, window_time AS wt FROM (
-    SELECT `val`, window_time,
+  --
+  -- KEY SALTING (two-phase / local-global). Conflating on symbol alone gives
+  -- one worker per symbol, and with ten symbols only ten workers can ever be
+  -- busy no matter how large the pool is. Phase 1 partitions on
+  -- (symbol, salt) to multiply the key space; phase 2 reduces the salt
+  -- shards back to one row per symbol per window. Correct by associativity:
+  -- the newest of the per-shard newest IS the global newest.
+  --
+  -- The salt MUST vary per RECORD. Hashing the symbol yields a constant per
+  -- symbol and manufactures no parallelism at all; MOD over event_time
+  -- spreads consecutive ticks across shards evenly.
+  --
+  -- Both phases stay ROW_NUMBER rather than GROUP BY on purpose: dedup
+  -- preserves the time attribute, so `wt` remains orderable downstream. A
+  -- GROUP BY reduction would strip it, and after TUMBLE there is no other
+  -- time attribute left to recover (MAX_BY does not exist on Confluent, which
+  -- is why the standalone salted_conflate.sql had to fall back to a
+  -- lexicographic LPAD/CONCAT/MAX/SUBSTRING encode).
+  SELECT `val`, wt FROM (
+    SELECT `val`, wt, window_start, window_end, `$rowtime`,
+      -- phase 2: reduce the salt shards (at most 8 rows per symbol/window)
       ROW_NUMBER() OVER (PARTITION BY window_start, window_end,
                                       JSON_VALUE(`val`, '$.symbol')
-                         ORDER BY `$rowtime` DESC) AS rn
-    FROM TABLE(TUMBLE(TABLE `prices`, DESCRIPTOR(`$rowtime`), INTERVAL '0.25' SECOND))
-  ) WHERE rn = 1
+                         ORDER BY `$rowtime` DESC) AS rn2
+    FROM (
+      SELECT `val`, window_time AS wt, window_start, window_end, `$rowtime`,
+        -- phase 1: parallel across (symbol, salt)
+        ROW_NUMBER() OVER (PARTITION BY window_start, window_end,
+                                        JSON_VALUE(`val`, '$.symbol'),
+                                        MOD(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT), 8)
+                           ORDER BY `$rowtime` DESC) AS rn
+      FROM TABLE(TUMBLE(TABLE `prices`, DESCRIPTOR(`$rowtime`), INTERVAL '0.25' SECOND))
+    ) WHERE rn = 1
+  ) WHERE rn2 = 1
 ),
 latest_price AS (
   SELECT symbol, price, event_time FROM (

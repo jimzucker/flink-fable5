@@ -329,15 +329,40 @@ public final class SqlPipeline {
                     + ")";
         }
         String seconds = BigDecimal.valueOf(conflateMs).movePointLeft(3).toPlainString();
+        // Key salting (two-phase / local-global), identical to the salted CTE in
+        // confluent/sql/optimized/statement_set.sql so the two SQL cells compare
+        // platform rather than query. Conflating on symbol alone gives one worker
+        // per symbol: with ten symbols only ten workers can ever be busy however
+        // much compute is attached. Phase 1 partitions on (symbol, salt) to
+        // multiply the key space, phase 2 reduces the shards back to one row per
+        // symbol per window. Correct by associativity — the newest of the
+        // per-shard newest IS the global newest.
+        //
+        // The salt must vary per RECORD; hashing the symbol gives a constant per
+        // symbol and manufactures nothing. Both phases stay ROW_NUMBER rather
+        // than GROUP BY because dedup preserves the time attribute, keeping `wt`
+        // orderable downstream.
+        int saltFactor = params.getInt("sql.price.salt.factor", 8);
+        String phase1Salt = saltFactor > 1
+                ? ",\n                                        MOD(CAST(JSON_VALUE(`val`,"
+                        + " '$.event_time') AS BIGINT), " + saltFactor + ")"
+                : "";
         return "conflated AS (\n"
-                + "  SELECT `val`, window_time AS wt FROM (\n"
-                + "    SELECT `val`, window_time,\n"
+                + "  SELECT `val`, wt FROM (\n"
+                + "    SELECT `val`, wt, window_start, window_end, `event_ts`,\n"
                 + "      ROW_NUMBER() OVER (PARTITION BY window_start, window_end,\n"
                 + "                                      JSON_VALUE(`val`, '$.symbol')\n"
-                + "                         ORDER BY `event_ts` DESC) AS rn\n"
-                + "    FROM TABLE(TUMBLE(TABLE `" + PRICES + "`, DESCRIPTOR(`event_ts`),"
+                + "                         ORDER BY `event_ts` DESC) AS rn2\n"
+                + "    FROM (\n"
+                + "      SELECT `val`, window_time AS wt, window_start, window_end, `event_ts`,\n"
+                + "        ROW_NUMBER() OVER (PARTITION BY window_start, window_end,\n"
+                + "                                        JSON_VALUE(`val`, '$.symbol')"
+                + phase1Salt + "\n"
+                + "                           ORDER BY `event_ts` DESC) AS rn\n"
+                + "      FROM TABLE(TUMBLE(TABLE `" + PRICES + "`, DESCRIPTOR(`event_ts`),"
                 + " INTERVAL '" + seconds + "' SECOND))\n"
-                + "  ) WHERE rn = 1\n"
+                + "    ) WHERE rn = 1\n"
+                + "  ) WHERE rn2 = 1\n"
                 + "),\n"
                 + "latest_price AS (\n"
                 + "  SELECT symbol, price, event_time FROM (\n"

@@ -24,7 +24,7 @@ between those two cells that is not platform is a bug in the experiment.
 | Exactly-once delivery | yes | yes | yes | yes |
 | Upsert key matches sink primary key | n/a | 3 of 4 statements | 3 of 4 statements | yes |
 | CR-1 output cadence cap | yes (per-key timers) | **NOT POSSIBLE** | yes (`sink.buffer-flush.interval`) | **NO** |
-| Key salting on narrow keys | **no** | **no** | **no** | yes (all absent) |
+| Key salting on narrow keys | yes (`LocalPriceConflator`) | yes (salted `conflated` CTE) | yes (same CTE) | yes |
 | Sink partitions / buckets | 48 topic partitions | 6 buckets | 48 topic partitions | **NO** |
 
 ## Open gaps
@@ -59,7 +59,29 @@ cells, so the number compares engines rather than comparing "emits every
 update" against "emits at most 2/sec/key". Report CR-1 separately as a
 capability row, not as a throughput number.
 
-### 2. Salting is in none of the three pipelines
+### 2. Salting — now applied to all three (salt factor 8)
+
+Resolved. All three pipelines carry two-phase (local-global) conflation on the
+price path at salt factor 8, giving 80 shard keys over 10 symbols against 48
+partitions:
+
+* **DataStream** — `LocalPriceConflator` keys on `(symbol, salt)` ahead of the
+  narrow `keyBy(ticker)`, keeps the newest tick per shard, and the existing
+  `keyBy(symbol)` reduces the candidates. `price.salt.factor <= 1` adds no
+  operator, preserving the baseline topology.
+* **Both SQL cells** — the same salted `conflated` CTE. Both phases stay
+  `ROW_NUMBER` rather than `GROUP BY`, because dedup preserves the time
+  attribute and keeps `wt` orderable downstream; a `GROUP BY` reduction strips
+  it, and after `TUMBLE` there is no other time attribute to recover. That is
+  why the standalone `salted_conflate.sql` had to use the lexicographic
+  `LPAD`/`CONCAT`/`MAX`/`SUBSTRING` encode — it had already reduced with
+  `GROUP BY`. Verified by `EXPLAIN`: `Upsert key: (symbol)` survives both
+  phases and no new warnings appear.
+
+The salt must vary per RECORD. Hashing the symbol yields a constant per symbol
+and manufactures no parallelism whatsoever.
+
+### Historical note — the claim that was wrong
 
 Correcting an earlier statement in this repo's notes: the Phase 14 "+85% from
 salting" figure came from `confluent/sql/optimized/salted_conflate.sql`, a
