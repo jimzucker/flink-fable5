@@ -330,3 +330,32 @@ docs.confluent.io/cloud/current/flink/how-to-guides/resolve-common-query-problem
 Our sinks are raw key/value topics so the PK must be the single `key` column;
 therefore the fix is to GROUP BY CONCAT(account,'|',ticker) rather than
 GROUP BY account, ticker. Unresolved warnings can drive a statement DEGRADED.
+
+RUN A (AWS DataStream, tuned) — SEED METHODOLOGY
+--------------------------------------------------------------------------
+Backlog sizing is not a wall-clock decision, it is an arithmetic one:
+
+    seed_records > drain_rate x (metric_blind_spot + plateau_needed)
+
+Two seeds were REJECTED before producing any number:
+  1. demo defaults (10 trades/s, 20 prices/s) -> ~14k records. Drains in about
+     a second; anything measured would have been startup noise.
+  2. one Fargate task at its 10,000/s target only achieved 5,683/s (CPU-bound)
+     -> 3.44M records = 10-17s of drain. CloudWatch is 1-min granularity with
+     a ~2-min blind spot after job start, so the drain would have ENDED before
+     the first usable datapoint existed.
+
+Fix is horizontal, not vertical: 12 generator tasks x 20 min. Once the work was
+spread each task hit ~9,700 prices/s (vs 5,683 alone), aggregate ~116k/s, for
+~140M prices + ~1.4M trades. At an expected 200-400k/s drain that is 6-11 min
+of draining -- outlasts the blind spot with room for a stable plateau.
+
+Config bugs caught by the audit//harness BEFORE any number was produced:
+  * Confluent 6 buckets vs 10/20/40 CFUs  -> would have read as "cannot scale"
+  * generator at demo rates               -> startup noise as throughput
+  * topics_recreate=true                  -> MSK ThrottlingQuotaExceeded, the
+                                             generator silently absent
+  * arm64 image on x86 Fargate            -> exec-format error, reads as an app bug
+  * audit's own ACCOUNTS=50 vs deployed 5 -> overstated cardinality 10x
+None of these are visible in a throughput number. That is the whole argument
+for auditing utilisation before trusting a measurement.
