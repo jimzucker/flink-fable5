@@ -36,7 +36,18 @@ variable "topics_recreate" {
 variable "kafka_extra_props" {
   description = "Extra kafka.props.* passthrough entries for the Flink app (e.g. sink batching: linger.ms, batch.size, compression.type)"
   type        = map(string)
-  default     = {}
+
+  # transaction.timeout.ms is REQUIRED, not optional tuning, whenever the sink
+  # runs exactly-once. Flink's producer default is 1 HOUR; MSK's broker maximum
+  # (transaction.max.timeout.ms) is 15 MINUTES. Leave it unset and every sink
+  # committer fails at InitProducerId with "The transaction timeout is larger
+  # than the maximum value allowed by the broker", the job restart-loops, and
+  # it reads nothing — which shows up as 100% busy with zero records, not as an
+  # obvious error. It lived on the command line before, so it silently vanished
+  # the first time a deploy was scripted. Defaulting it here is the fix.
+  default = {
+    "transaction.timeout.ms" = "540000"
+  }
 }
 
 variable "flink_extra_props" {
