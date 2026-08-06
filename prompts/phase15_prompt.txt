@@ -359,3 +359,35 @@ Config bugs caught by the audit//harness BEFORE any number was produced:
   * audit's own ACCOUNTS=50 vs deployed 5 -> overstated cardinality 10x
 None of these are visible in a throughput number. That is the whole argument
 for auditing utilisation before trusting a measurement.
+
+RUN A RESULTS — AWS DataStream, tuned, exactly-once, P=20 (~6 billed KPU)
+--------------------------------------------------------------------------
+Method: drain a seeded backlog, time start->completion, rate = records/elapsed.
+Chosen over reading CloudWatch rates because MSF merges subtask series and the
+aggregation semantics are ambiguous; records/elapsed assumes nothing. The
+probe's x-parallelism scaling agreed within ~20%, which is the cross-check.
+
+  SALTED (price.salt.factor=8)   143.68M records / 982s   = ~148,000 rec/s
+  UNSALTED (price.salt.factor=1) ~140M records   / 2613s  = ~53,600 rec/s
+  => SALTING IS 2.66x FASTER ON AWS DATASTREAM (+176%)
+
+I PREDICTED THE OPPOSITE AND WAS WRONG. The reasoning was: salting adds a keyed
+shuffle plus per-key state and timers to the hot price path, and the DataStream
+job "does not have Confluent's key-starvation problem", so it should be net
+overhead. It DOES have that problem -- four of six keyBy stages sit on ten
+tickers and the entire price feed funnels through them. Conflating BEFORE the
+narrowing is the whole game, and it is worth more here (+176%) than on
+Confluent (+85%). Lesson: test the tuning on each platform; do not reason about
+whether a win transfers.
+
+Health/validity evidence for the salted run:
+  backpressure 92%      -> bottleneck is DOWNSTREAM of the source, so this is
+                           pipeline capacity, not how fast we could feed it
+  failed checkpoints 0
+  fullRestarts stable
+  mv_account_out 45.3/s -> CR-1 verified in production: 50 account|ticker keys
+                           capped at 1 update/key/sec, holding under saturation
+
+RETIRE THE OLD 435k/s AWS NUMBER until re-measured. It predates exactly-once
+and CR-1 and was taken at a different parallelism; it is not comparable to
+anything measured here.
