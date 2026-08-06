@@ -254,3 +254,37 @@ and bought only ~14%. Expensive, but NOT the bottleneck. The SQL-on-AWS
 penalty is structural.
 Lesson: a hot operator is not automatically the constraint. Measure the fix,
 do not assume it.
+
+CONFLUENT WARNS ABOUT THE SAME DEFECT AWS HIDES (user spotted in console)
+--------------------------------------------------------------------------
+Confluent flags dml-14-mv-by-account-ticker with:
+  UPSERT_AND_PRIMARY_KEYS_DIFFERENT — "The primary key does not match the
+  upsert key derived from the query ... the system needs to add a
+  state-intensive operation for correction."
+  HIGH_STATE_OPERATOR_WITHOUT_TTL — "potentially needs to store an infinite
+  amount of state ... can result in a DEGRADED statement and higher CFU
+  consumption."
+
+This is EXACTLY the AWS SinkUpsertMaterializer, same root cause: the sink PK
+is CONCAT(account,'|',ticker) but the GROUP BY is on (account, ticker), so
+the planner cannot prove the sink key derives from the grouping key and
+inserts a correction operator.
+
+THE DIFFERENCE IS OBSERVABILITY, and it favours Confluent:
+  Confluent  — named warning, in the console, with a doc link, and an
+               explicit statement that it costs CFUs.
+  AWS        — silent. Found only by reading the execution plan and noticing
+               a task named SinkMaterializer_24 moving 219k records/sec.
+Add to the matrix: Confluent surfaces query-shape problems that MSF hides.
+
+FIX (untested on either platform): group by the concatenation itself so the
+upsert key EQUALS the primary key —
+   GROUP BY CONCAT(account,'|',ticker)   instead of   GROUP BY account, ticker
+On AWS the equivalent (upsert-materialize=NONE) removed the operator
+entirely but bought only ~14%, so expect a modest gain, not a fix for the
+~19x throughput gap.
+
+TTL warning = the known SQL limitation: table.exec.state.ttl is JOB-WIDE, so
+it cannot be scoped to dedup the way the DataStream job scopes
+dedup.state.ttl.ms. Setting it would also expire the position aggregates and
+silently change the answers. Unresolved.
