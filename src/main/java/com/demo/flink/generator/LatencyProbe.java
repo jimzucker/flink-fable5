@@ -26,9 +26,16 @@ import java.util.regex.Pattern;
 public class LatencyProbe {
 
     private static final Pattern FIELD = Pattern.compile("\"(as_of|event_time)\"\\s*:\\s*(\\d+)");
-    private static final Pattern MV = Pattern.compile(
-            "\"net_qty\"\\s*:\\s*(-?\\d+).*\"price\"\\s*:\\s*\"([0-9.]+)\".*\"mv\"\\s*:\\s*\"(-?[0-9.]+)\"");
+    // Fields are matched independently: JSON key order is not guaranteed (the
+    // SQL pipeline's JSON_OBJECT emits a different order than the DataStream
+    // serializer), and numeric fields may or may not be quoted. An ordered,
+    // quote-required pattern silently matched nothing and reported "checked=0",
+    // which reads like success rather than "the check never ran".
+    private static final Pattern QTY = Pattern.compile("\"net_qty\"\\s*:\\s*\"?(-?\\d+)\"?");
+    private static final Pattern PRICE = Pattern.compile("\"price\"\\s*:\\s*\"?(-?[0-9.]+)\"?");
+    private static final Pattern MVAL = Pattern.compile("\"mv\"\\s*:\\s*\"?(-?[0-9.]+)\"?");
 
+    private static String mathSample = null;
     private static long mathChecked = 0;
     private static long mathBad = 0;
 
@@ -49,21 +56,41 @@ public class LatencyProbe {
         List<Long> latencies = new ArrayList<>();
         long end = System.currentTimeMillis() + durationSec * 1000;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            consumer.subscribe(List.of(topic));
+            // Assign partitions directly rather than subscribe(): a consumer
+            // GROUP needs AlterGroup/DescribeGroup, and when that authorization
+            // fails poll() just returns empty forever instead of throwing — a
+            // silent failure that reads exactly like "the pipeline produced
+            // nothing". Manual assignment needs only ReadData on the topic.
+            List<org.apache.kafka.common.TopicPartition> parts = new ArrayList<>();
+            for (org.apache.kafka.common.PartitionInfo pi : consumer.partitionsFor(topic)) {
+                parts.add(new org.apache.kafka.common.TopicPartition(topic, pi.partition()));
+            }
+            System.out.println("latency-probe: assigned " + parts.size() + " partitions of " + topic);
+            consumer.assign(parts);
+            consumer.seekToEnd(parts);
             while (System.currentTimeMillis() < end) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.value() == null) {
                         continue; // upsert tombstone
                     }
-                    Matcher mv = MV.matcher(record.value());
-                    if (mv.find()) {
+                    Matcher q = QTY.matcher(record.value());
+                    Matcher p = PRICE.matcher(record.value());
+                    Matcher v = MVAL.matcher(record.value());
+                    if (q.find() && p.find() && v.find()) {
                         mathChecked++;
-                        java.math.BigDecimal expect = new java.math.BigDecimal(mv.group(2))
-                                .multiply(new java.math.BigDecimal(mv.group(1)));
-                        if (expect.compareTo(new java.math.BigDecimal(mv.group(3))) != 0) {
+                        java.math.BigDecimal expect = new java.math.BigDecimal(p.group(1))
+                                .multiply(new java.math.BigDecimal(q.group(1)));
+                        if (expect.compareTo(new java.math.BigDecimal(v.group(1))) != 0) {
                             mathBad++;
+                            if (mathBad <= 3) {
+                                System.out.println("math-verify MISMATCH: " + record.value());
+                            }
                         }
+                    } else if (mathSample == null) {
+                        // Keep one unmatched record so a zero count is diagnosable
+                        // instead of looking like a clean pass.
+                        mathSample = record.value();
                     }
                     Matcher m = FIELD.matcher(record.value());
                     if (m.find()) {
@@ -80,6 +107,9 @@ public class LatencyProbe {
         if (params.getBoolean("probe.verify.math", false)) {
             System.out.printf("math-verify: topic=%s checked=%d mismatches=%d%n",
                     topic, mathChecked, mathBad);
+            if (mathChecked == 0 && mathSample != null) {
+                System.out.println("math-verify: NO FIELDS MATCHED — sample record: " + mathSample);
+            }
         }
         if (latencies.isEmpty()) {
             System.out.println("latency-probe: topic=" + topic + " NO RECORDS OBSERVED");

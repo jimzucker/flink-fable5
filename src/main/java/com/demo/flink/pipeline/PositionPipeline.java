@@ -10,6 +10,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
+import org.apache.flink.connector.kafka.sink.KafkaSinkBuilder;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -28,9 +29,15 @@ import org.slf4j.LoggerFactory;
  *                                                                        +-> (join price) mv by ticker -> Kafka
  *   prices  -> parse (exact long cents) -> latest price per ticker (in the joins)
  *
+ * Delivery guarantee is configurable and defaults to EXACTLY_ONCE.
+ *
  * Outputs are idempotent per-key snapshots (upsert streams), so AT_LEAST_ONCE
- * delivery plus keyed partitioning gives correct end results without
- * transactional consumers.
+ * would also give correct end results without transactional consumers — but
+ * that is a deliberate weakening, not a free lunch, and it must be stated
+ * whenever the pipeline is benchmarked: under EXACTLY_ONCE results are only
+ * visible at transactional checkpoint commits, so end-to-end latency is
+ * floored by checkpoint.interval.ms. Comparing an AT_LEAST_ONCE pipeline
+ * against an exactly-once one measures the guarantee, not the engine.
  */
 public final class PositionPipeline {
 
@@ -38,6 +45,17 @@ public final class PositionPipeline {
 
     public static void main(String[] args) throws Exception {
         AppConfig params = AppConfig.load(args);
+
+        // One jar, two implementations of the same contract: pipeline.mode=sql
+        // runs the Flink SQL statement set instead of this DataStream graph.
+        String mode = params.get("pipeline.mode", "datastream").trim().toLowerCase();
+        if (mode.equals("sql")) {
+            SqlPipeline.run(params);
+            return;
+        }
+        if (!mode.equals("datastream")) {
+            throw new IllegalArgumentException("pipeline.mode must be datastream or sql (was: " + mode + ")");
+        }
 
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
         long checkpointIntervalMs = params.getLong("checkpoint.interval.ms", 10_000L);
@@ -148,11 +166,27 @@ public final class PositionPipeline {
     }
 
     private static <T> KafkaSink<T> jsonSink(AppConfig params, String topic, JsonKafkaSerializer.KeyFn<T> keyFn) {
-        return KafkaSink.<T>builder()
+        String guarantee = params.get("sink.delivery.guarantee", "exactly-once");
+        DeliveryGuarantee dg;
+        switch (guarantee) {
+            case "exactly-once": dg = DeliveryGuarantee.EXACTLY_ONCE; break;
+            case "at-least-once": dg = DeliveryGuarantee.AT_LEAST_ONCE; break;
+            case "none": dg = DeliveryGuarantee.NONE; break;
+            default: throw new IllegalArgumentException(
+                    "sink.delivery.guarantee must be exactly-once | at-least-once | none, got: " + guarantee);
+        }
+        KafkaSinkBuilder<T> builder = KafkaSink.<T>builder()
                 .setBootstrapServers(params.get("kafka.bootstrap.servers", "localhost:29092"))
                 .setRecordSerializer(new JsonKafkaSerializer<>(topic, keyFn))
-                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                .setKafkaProducerConfig(params.kafkaProps())
-                .build();
+                .setDeliveryGuarantee(dg)
+                .setKafkaProducerConfig(params.kafkaProps());
+        if (dg == DeliveryGuarantee.EXACTLY_ONCE) {
+            // Each sink needs its own prefix, and the producer's transaction
+            // timeout must stay under the broker's transaction.max.timeout.ms
+            // (MSK default 15 min) or the transactions are rejected outright.
+            builder.setTransactionalIdPrefix(
+                    params.get("sink.transactional.id.prefix", "flink-demo") + "-" + topic);
+        }
+        return builder.build();
     }
 }

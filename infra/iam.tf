@@ -19,12 +19,21 @@ locals {
       "kafka-cluster:WriteData",
       "kafka-cluster:ReadData",
       "kafka-cluster:AlterGroup",
-      "kafka-cluster:DescribeGroup"
+      "kafka-cluster:DescribeGroup",
+      # Exactly-once sinks use transactional producers. Without these three
+      # (and the transactional-id resource below) the producer cannot
+      # initialize its transaction, the sink fails, and the job crash-loops
+      # at ANY parallelism and ANY transaction timeout — with no useful
+      # error surfaced in the MSF application logs.
+      "kafka-cluster:WriteDataIdempotently",
+      "kafka-cluster:AlterTransactionalId",
+      "kafka-cluster:DescribeTransactionalId"
     ]
     Resource = [
       local.msk_cluster_arn,
       "${local.msk_base}:topic/${local.msk_path}/*",
-      "${local.msk_base}:group/${local.msk_path}/*"
+      "${local.msk_base}:group/${local.msk_path}/*",
+      "${local.msk_base}:transactional-id/${local.msk_path}/*"
     ]
   }
 }

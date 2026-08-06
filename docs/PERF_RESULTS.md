@@ -2,6 +2,47 @@
 
 ## Final scoreboard
 
+> **Phase 15 separated the variables that every earlier number confounded.**
+> Until now every comparison moved two or three things at once — language,
+> platform, and delivery guarantee. Adding *SQL on AWS* as a third cell
+> isolates them, and it changes the advice.
+
+### Latency, one variable at a time
+
+All three measured on the same day with the same probe, the same 11k msgs/sec
+live load, exactly-once sinks, and outputs re-verified to the cent.
+
+| | Language | Platform | p50 | p99 | records verified |
+|---|---|---|---|---|---|
+| **A** | DataStream | AWS | **603 ms** | 1,000 ms | 83,651, 0 errors |
+| **B** | SQL | AWS | 4,552–8,705 ms | 35,412 ms | 32,640, 0 errors |
+| **C** | SQL | **Confluent** | **1,966 ms** | **2,372 ms** | 14,899, 0 errors |
+
+*(B measured twice on the same config: 8,705 ms then 4,552 ms — run-to-run
+variance is large, so read it as "several seconds", not a precise figure.)*
+
+**A → B is the language cost** (same cloud, guarantee, hardware, hour):
+DataStream is roughly **7–14× faster than SQL**. That part of the earlier
+story survives.
+
+**B → C is the platform cost, and it runs the other way**: the *same* SQL is
+**2–4× faster on Confluent than on AWS**, with a far tighter tail — a 20%
+spread from p50 to p99 versus 8× on AWS. Managed Flink SQL is Confluent's
+product and their runtime is tuned for it; MSF is generic Flink that accepts
+SQL. So "use AWS because AWS was faster" is the wrong conclusion **if you are
+writing SQL** — that only held for the DataStream cell.
+
+**Practical reading:** sub-second work → DataStream on AWS. SQL work →
+Confluent, not MSF. The worst of the three options is the one nobody would
+have guessed without this experiment: SQL on AWS.
+
+*Caveat that applies to all three: the probe consumes with Kafka's default
+`read_uncommitted`, so it sees transactional records as written rather than
+at commit. Exactly-once therefore did not floor latency at the checkpoint
+interval (603 ms with 60-second checkpoints). A `read_committed` consumer
+would measure very differently on every platform here.*
+
+
 Both clouds run the same requirements, the same data, and are judged by the
 same five independent validation checks. Every number below was measured on a
 **deployable configuration** (real Terraform, real billed units) using the

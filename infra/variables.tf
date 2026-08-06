@@ -103,3 +103,9 @@ variable "generator_memory" {
   type    = number
   default = 512
 }
+
+variable "snapshots_enabled" {
+  description = "MSF snapshots. Keep true normally; set false while debugging a crash-looping app so config updates are not blocked by a failed snapshot."
+  type        = bool
+  default     = true
+}

@@ -1,0 +1,233 @@
+Phase 15 — Isolate language from platform; rebuild the bottom line (plan)
+==========================================================================
+
+PROMPT 15
+---------
+"can we retest confluent throughput and cost with the fused version? and run
+sql on aws to isolate the language from the platform? create a plan for a new
+phase. we should make our lens latency/throughput/ability to scale
+linearly/cost and language tech(cloud) ie DataStream(AWS) or SQL(Confluent)
+or SQL(AWS) and revise our comparison bottom line on most tuned version of
+each and revise as we tune"
+
+WHY THIS PHASE EXISTS (two known defects in the current scoreboard)
+--------------------------------------------------------------------
+1. CONFOUNDED THROUGHPUT. The published "Confluent 127k full pipeline" came
+   from the CHAINED topology that phase 12 proved was a 15x latency mistake.
+   It was never re-measured after fusing. It is almost certainly wrong-low
+   and unfair to Confluent.
+2. CONFOUNDED COMPARISON. Every number pairs "Java on AWS" against "SQL on
+   Confluent" — two variables moving at once (programming model AND
+   platform), plus a third we later found: delivery guarantee (our
+   DataStream ran AT_LEAST_ONCE and published immediately; Confluent runs
+   exactly-once and publishes at checkpoint commits). We cannot currently
+   say how much of the 7x latency gap is language, platform, or safety
+   setting.
+
+THE MATRIX (one cell is impossible, which is itself a finding)
+---------------------------------------------------------------
+                    AWS Managed Flink        Confluent Cloud
+  DataStream        A  (measured)            IMPOSSIBLE - no DataStream API
+  SQL               B  (NEW - this phase)    C  (retest fused)
+
+Adding cell B is what isolates the variables:
+  A -> B  = the LANGUAGE delta   (same cloud, same guarantee, Java vs SQL)
+  B -> C  = the PLATFORM delta   (same language, AWS vs Confluent)
+  and within B, at-least-once vs exactly-once = the GUARANTEE delta,
+  which is the suspected bulk of the residual.
+
+THE FOUR LENSES (every cell measured on all four)
+--------------------------------------------------
+  L1 LATENCY        p50/p95/p99, live steady feed, same LatencyProbe
+  L2 THROUGHPUT     full-pipeline backlog drain, same method both clouds
+  L3 LINEAR SCALE   2x the compute -> what multiple of throughput?
+  L4 COST           infra TCO $/hr at equal work (not compute-only)
+
+WORK ITEMS
+----------
+15.1 BUILD cell B: SqlPipeline.java — the same four outputs expressed as
+     Flink SQL via TableEnvironment, fused into ONE StatementSet (matching
+     Confluent's best-known shape, phase 12). Kafka connectors configured
+     for MSK IAM. Selected at runtime by a config property
+     (pipeline.mode=datastream|sql) so the SAME JAR serves both cells and
+     Terraform needs no new main class.
+     Dependency risk: needs flink-table-planner / flink-table-runtime /
+     flink-sql-connector-kafka. MSF ships the Flink distribution, so most
+     should be 'provided'; the SQL Kafka connector may need shading. If the
+     jar cannot be made to work on MSF, that is itself a reportable result.
+15.2 VERIFY cell B correctness before benchmarking it: the unchanged
+     5-check validation suite must pass. A fast pipeline that computes the
+     wrong answer is not a data point.
+15.3 MEASURE A and B on the SAME AWS stack, same day, same hardware —
+     swap the property, no redeploy. Both at AT_LEAST_ONCE first (isolates
+     language), then B again at EXACTLY_ONCE (isolates guarantee).
+15.4 MEASURE C: redeploy Confluent, run the FUSED statement set, and take
+     full-pipeline throughput + cost + linear-scale, not just latency.
+     This replaces the confounded 127k.
+15.5 REBUILD THE BOTTOM LINE from the best-tuned configuration of each
+     cell, on all four lenses, with the tech/language dimension explicit.
+
+STANDING RULE (user's, adopted for the rest of the project)
+------------------------------------------------------------
+The scoreboard always reflects the MOST TUNED known version of each cell,
+and is revised whenever tuning improves one. Any number carried forward
+from an older, less-tuned configuration must be labelled as such or
+re-measured. (This phase exists because we broke that rule once already.)
+
+SEQUENCING (cost-aware)
+------------------------
+Deploy AWS once, measure A and B and B-exactly-once by swapping config.
+Deploy Confluent once, measure C fused. Auto-teardown both when the cell's
+measurements are done (standing order). Est. 3-4 h, ~$25-35.
+
+REVIEW GATES
+------------
+(a) this plan; (b) cell B validation green before any B benchmark;
+(c) the rebuilt bottom line before it replaces the published one.
+
+RISKS / WHAT COULD GO WRONG
+----------------------------
+- The SQL-on-MSF jar may hit dependency or connector problems (this is the
+  main schedule risk). Report honestly if so.
+- SQL-on-AWS may not be able to express the CR-1 cadence cap either, since
+  that was a SQL-language limit rather than a Confluent one. If so, that
+  CONFIRMS CR-1 as a language finding rather than a platform one — a
+  valuable result either way, and it is worth testing explicitly.
+
+15.1 BUILD COMPLETE (local, no cloud). SqlPipeline.java + planner test;
+27 tests green; bytecode 55; jar +7KB (all table deps 'provided' — MSF
+ships the Flink distribution, and the existing flink-connector-kafka
+already supplies the table factories, so no SQL connector was needed).
+
+TWO FINDINGS FROM THE BUILD THAT CHANGE THIS PHASE
+---------------------------------------------------
+(a) The Confluent TUMBLE conflation must NOT be copied blindly. Ported
+    literally, an idle price stream leaves the final tick in an unfired
+    window and the MV outputs converge to WRONG values — a validation
+    failure the DataStream job cannot have. Default is therefore
+    keep-last-row (the exact analogue of the DataStream lastPriceCents
+    value state); sql.price.conflate.ms=250 restores the Confluent shape.
+    => Cell B must be measured TWICE:
+         B1 default keep-last-row  -> the fair A-vs-B LANGUAGE comparison
+         B2 conflate.ms=250        -> the fair B-vs-C PLATFORM comparison
+(b) upsert-kafka exposes sink.buffer-flush.interval / .max-rows, which
+    gives per-key "newest value at most once per interval" — i.e. CR-1
+    semantics, enforced at the SINK rather than by an operator timer. The
+    build wired position.emit.interval.ms / mv.emit.interval.ms into it.
+    => ADD A TEST: run scripts/cadence_check.py against SQL-on-AWS. If it
+    passes, phase 13's conclusion is TOO HARSH and must be revised: rate
+    limiting is not a SQL-language limitation at all, it is that
+    Confluent's managed tables do not expose the sink option. That is a
+    materially fairer verdict and it must be corrected if true.
+    => ALSO re-check on Confluent whether any equivalent sink buffering is
+    exposed there before restating the CR-1 finding.
+
+KNOWN GAPS IN CELL B (recorded, not hidden)
+--------------------------------------------
+- Dedup state has NO TTL in SQL: table.exec.state.ttl is job-wide and
+  would also expire the position aggregates (silently changing answers);
+  the STATE_TTL hint does not cover deduplication. So the SQL job's
+  trade_id state grows unbounded. Exposed as sql.state.ttl.ms default 0.
+- No operator uids in SQL; savepoint restore across a topology change
+  needs CompiledPlan.
+- positions as_of is MAX(event_time), not last-applied event time (same
+  substitution the proven Confluent SQL makes).
+- Account-level sinks get an extra SinkUpsertMaterializer because the
+  planner cannot prove CONCAT(account,'|',ticker) is a bijection of the
+  group key — extra state the DataStream job does not carry.
+
+15.3a THE BLOCKER, AND WHAT IT COST
+------------------------------------
+Switching the DataStream sink to EXACTLY_ONCE (the user's correctness point:
+every prior comparison pitted our at-least-once pipeline against Confluent's
+exactly-once one, so it measured the guarantee as much as the engine) made
+the job CRASH-LOOP: restarts climbing forever, ZERO checkpoints ever
+completed, therefore zero committed transactions, therefore probes reading
+"NO RECORDS OBSERVED".
+
+Four attempts at parallelism 20 produced no attributable information because
+I changed four things at once (new jar, new guarantee, new checkpoint
+interval, new dedup TTL). Two second-order traps made it worse:
+  * MSF refuses to update an application it cannot snapshot, and cannot
+    snapshot a crash-looping one — so a broken app CANNOT be fixed in place.
+    Every attempt needed stop -> apply -> start, and the isolating control
+    experiment was literally unrunnable. Fixed by making snapshots_enabled a
+    variable and turning it off while debugging.
+  * MSF surfaces NO useful error for this failure (it happens inside Kafka
+    producer initialization, not Flink code), so the logs look like healthy
+    startup noise.
+
+ROOT CAUSE (found by dropping to parallelism 2 / 10 msgs-per-sec — $1/hr —
+with a known-good control and changing ONE variable at a time):
+  MSK IAM auth requires THREE permissions beyond WriteData/ReadData for
+  transactional producers —
+    kafka-cluster:WriteDataIdempotently
+    kafka-cluster:AlterTransactionalId
+    kafka-cluster:DescribeTransactionalId
+  plus a resource ARN for transactional-id/<cluster>/<uuid>/*.
+  Without them the producer cannot initialize its transaction and the job
+  dies, IDENTICALLY at parallelism 2 with 10 msgs/sec and at parallelism 20
+  with 11k, at any checkpoint interval and any transaction.timeout.ms.
+  After the fix: restarts 0, records flowing, at both scales.
+  (transaction.timeout.ms <= MSK's transaction.max.timeout.ms — broker
+  default 15 min vs Flink's producer default of 1 HOUR — is also required,
+  but is NOT sufficient on its own.)
+
+IMPORTANT: the wrong conclusion was available and I nearly published it.
+"Exactly-once does not work on Managed Flink for this pipeline" and "we
+never granted the permissions exactly-once needs" look identical from
+outside — crash loop, no output, no error — but only one of them is true.
+
+15.3b CELL A (DataStream, AWS, EXACTLY-ONCE, P=20): HEALTHY.
+  restarts 0 across the window; ingest exactly at generator rate
+  (parse_trade 1,000/s, parse_price 12,385/s).
+
+RESULTS — THE MATRIX, AND IT CHANGES THE ADVICE
+-------------------------------------------------
+All three cells: same probe, same 11k msgs/sec live load, exactly-once,
+outputs re-verified exact.
+
+  A  DataStream / AWS        p50    603ms  p99  1,000ms   83,651 verified
+  B  SQL        / AWS        p50 4,552-8,705ms p99 35,412ms 32,640 verified
+  C  SQL        / Confluent  p50  1,966ms  p99  2,372ms   14,899 verified
+
+A -> B  = LANGUAGE cost: DataStream ~7-14x faster than SQL (same cloud,
+          same guarantee, same hardware, same hour — one variable).
+B -> C  = PLATFORM cost, AND IT RUNS THE OTHER WAY: the same SQL is 2-4x
+          FASTER on Confluent than on AWS, with a 20% p50->p99 spread vs
+          8x on AWS. Managed Flink SQL is Confluent's product; MSF is
+          generic Flink that accepts SQL.
+
+=> "AWS is faster" was only ever true for the DataStream cell. For SQL the
+   ranking inverts. The worst of the three options — SQL on AWS — is the one
+   nobody would have picked out without separating the variables.
+
+THROUGHPUT (the 127k replacement): PARTIALLY ANSWERED, stated honestly.
+  The fused pipeline sustained the full 11k msgs/sec live feed with ~2s
+  latency and no lag. Under in-cloud amplification the cluster reached
+  976,305 msgs/sec of aggregate consumption at 20 CFUs — but that figure
+  INCLUDES the six amplification statements, not just the fused pipeline,
+  and the per-statement metric needed to isolate it returned HTTP 400.
+  So: the fused topology's own ceiling remains UNMEASURED. The old 127k
+  (chained topology) should not be quoted as the fused number, and the
+  976k should not be quoted as the pipeline's throughput.
+
+BUGS FOUND AND FIXED THIS PHASE (all three failed SILENTLY):
+  1. Missing transactional IAM on MSK (WriteDataIdempotently,
+     AlterTransactionalId, DescribeTransactionalId + transactional-id ARN).
+     Crash-loop at every scale, no error. Nearly published as "exactly-once
+     is unsupported on MSF" — which was false.
+  2. Probe launched into the MSK CLUSTER's security group (a *flink*
+     wildcard match) so it had no route to Kafka; subscribe() turned that
+     into an empty poll loop. Misread THREE times as pipeline failures.
+     Fixed by deriving network config from the running generator service
+     (scripts/run_probe.sh) and using assign() so failures throw.
+  3. Exactness check used an ordered, quote-required regex; SQL emits a
+     different key order, so it matched nothing and printed
+     "checked=0 mismatches=0" — which reads like a pass.
+
+PROCESS FAILURE WORTH RECORDING: the phase idled overnight because I queued
+the remaining plan inside ONE background command with internal wait-loops.
+That process was killed and everything behind it died with it; nothing was
+left to wake me. Correct pattern is one step per task, each launched from
+the previous step's completion notification.

@@ -48,7 +48,11 @@ resource "aws_kinesisanalyticsv2_application" "this" {
 
   application_configuration {
     application_snapshot_configuration {
-      snapshots_enabled = true
+      # Keep on for production/rescale (without it a restart replays from
+      # earliest). Turn OFF while debugging: MSF refuses to update an
+      # application it cannot snapshot, and it cannot snapshot a crash-looping
+      # one — so with snapshots on, a broken app cannot be fixed in place.
+      snapshots_enabled = var.snapshots_enabled
     }
 
     application_code_configuration {
