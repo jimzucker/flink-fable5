@@ -28,7 +28,14 @@ variable "topics_partitions" {
 }
 
 variable "topics_recreate" {
-  description = "Delete and recreate topics on generator start (clean partition layout for drain tests)"
+  # ONE-TIME BOOTSTRAP ONLY. With more than one generator task, every task races
+  # to delete and recreate all topics at once and MSK Serverless answers with
+  # ThrottlingQuotaExceededException: the losers die at startup having logged
+  # nothing past SLF4J init, ECS restarts them forever, and the seed silently
+  # comes from a single survivor. Seen twice in one session, the second time
+  # because the fix lived only in a scratchpad command line and did not survive
+  # writing a new deploy script. It lives here now.
+  description = "Delete and recreate topics on generator start. Set true ONCE to establish a clean partition layout with desired-count 1, then back to false. Leaving it true with multiple generator tasks throttles MSK and silently produces a fraction of the intended backlog."
   type        = bool
   default     = false
 }
