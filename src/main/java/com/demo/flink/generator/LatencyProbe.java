@@ -49,7 +49,18 @@ public class LatencyProbe {
         List<Long> latencies = new ArrayList<>();
         long end = System.currentTimeMillis() + durationSec * 1000;
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            consumer.subscribe(List.of(topic));
+            // Assign partitions directly rather than subscribe(): a consumer
+            // GROUP needs AlterGroup/DescribeGroup, and when that authorization
+            // fails poll() just returns empty forever instead of throwing — a
+            // silent failure that reads exactly like "the pipeline produced
+            // nothing". Manual assignment needs only ReadData on the topic.
+            List<org.apache.kafka.common.TopicPartition> parts = new ArrayList<>();
+            for (org.apache.kafka.common.PartitionInfo pi : consumer.partitionsFor(topic)) {
+                parts.add(new org.apache.kafka.common.TopicPartition(topic, pi.partition()));
+            }
+            System.out.println("latency-probe: assigned " + parts.size() + " partitions of " + topic);
+            consumer.assign(parts);
+            consumer.seekToEnd(parts);
             while (System.currentTimeMillis() < end) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
                 for (ConsumerRecord<String, String> record : records) {
