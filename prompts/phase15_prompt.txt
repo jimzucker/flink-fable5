@@ -136,6 +136,52 @@ KNOWN GAPS IN CELL B (recorded, not hidden)
   planner cannot prove CONCAT(account,'|',ticker) is a bijection of the
   group key — extra state the DataStream job does not carry.
 
+15.3a THE BLOCKER, AND WHAT IT COST
+------------------------------------
+Switching the DataStream sink to EXACTLY_ONCE (the user's correctness point:
+every prior comparison pitted our at-least-once pipeline against Confluent's
+exactly-once one, so it measured the guarantee as much as the engine) made
+the job CRASH-LOOP: restarts climbing forever, ZERO checkpoints ever
+completed, therefore zero committed transactions, therefore probes reading
+"NO RECORDS OBSERVED".
+
+Four attempts at parallelism 20 produced no attributable information because
+I changed four things at once (new jar, new guarantee, new checkpoint
+interval, new dedup TTL). Two second-order traps made it worse:
+  * MSF refuses to update an application it cannot snapshot, and cannot
+    snapshot a crash-looping one — so a broken app CANNOT be fixed in place.
+    Every attempt needed stop -> apply -> start, and the isolating control
+    experiment was literally unrunnable. Fixed by making snapshots_enabled a
+    variable and turning it off while debugging.
+  * MSF surfaces NO useful error for this failure (it happens inside Kafka
+    producer initialization, not Flink code), so the logs look like healthy
+    startup noise.
+
+ROOT CAUSE (found by dropping to parallelism 2 / 10 msgs-per-sec — $1/hr —
+with a known-good control and changing ONE variable at a time):
+  MSK IAM auth requires THREE permissions beyond WriteData/ReadData for
+  transactional producers —
+    kafka-cluster:WriteDataIdempotently
+    kafka-cluster:AlterTransactionalId
+    kafka-cluster:DescribeTransactionalId
+  plus a resource ARN for transactional-id/<cluster>/<uuid>/*.
+  Without them the producer cannot initialize its transaction and the job
+  dies, IDENTICALLY at parallelism 2 with 10 msgs/sec and at parallelism 20
+  with 11k, at any checkpoint interval and any transaction.timeout.ms.
+  After the fix: restarts 0, records flowing, at both scales.
+  (transaction.timeout.ms <= MSK's transaction.max.timeout.ms — broker
+  default 15 min vs Flink's producer default of 1 HOUR — is also required,
+  but is NOT sufficient on its own.)
+
+IMPORTANT: the wrong conclusion was available and I nearly published it.
+"Exactly-once does not work on Managed Flink for this pipeline" and "we
+never granted the permissions exactly-once needs" look identical from
+outside — crash loop, no output, no error — but only one of them is true.
+
+15.3b CELL A (DataStream, AWS, EXACTLY-ONCE, P=20): HEALTHY.
+  restarts 0 across the window; ingest exactly at generator rate
+  (parse_trade 1,000/s, parse_price 12,385/s).
+
 RESULTS
 -------
-[executing 15.3 — AWS cells A, B1, B2]
+[executing — cell A latency, then cell B]
