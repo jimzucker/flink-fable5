@@ -17,17 +17,27 @@ WITH deduped AS (
     FROM `trades`
   ) WHERE rn = 1
 )
+-- Group on the CONCATENATED key, not on its components. Projecting
+-- CONCAT(account,'|',ticker) AFTER a GROUP BY account,ticker destroys the
+-- derived upsert key: EXPLAIN reports Upsert key:(account,ticker) at the
+-- aggregate and NOTHING at the sink, so the planner inserts a
+-- state-intensive correction operator (the AWS SinkUpsertMaterializer, and
+-- the "State size: high" operator that also triggers the no-TTL warning).
+-- Grouping on the concatenation makes the upsert key a single column that
+-- matches the sink PRIMARY KEY. account/ticker are constant within a group,
+-- so MAX() over them is an identity, not an aggregation.
 SELECT
-  CONCAT(account, '|', ticker),
+  acct_key,
   JSON_OBJECT('account' VALUE account, 'ticker' VALUE ticker,
               'net_qty' VALUE net_qty, 'as_of' VALUE as_of)
 FROM (
-  SELECT JSON_VALUE(`val`, '$.account') AS account,
-         JSON_VALUE(`val`, '$.ticker') AS ticker,
+  SELECT CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')) AS acct_key,
+         MAX(JSON_VALUE(`val`, '$.account')) AS account,
+         MAX(JSON_VALUE(`val`, '$.ticker')) AS ticker,
          SUM(CAST(JSON_VALUE(`val`, '$.qty') AS BIGINT)) AS net_qty,
          MAX(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT)) AS as_of
   FROM deduped
-  GROUP BY JSON_VALUE(`val`, '$.account'), JSON_VALUE(`val`, '$.ticker')
+  GROUP BY CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker'))
 );
 
 INSERT INTO `position-by-ticker`
@@ -82,20 +92,24 @@ latest_price AS (
     FROM conflated
   ) WHERE rn = 1
 )
+-- Same upsert-key fix as position-by-account-ticker: group on the
+-- concatenated key so the sink's single-column PRIMARY KEY matches the
+-- upsert key the planner derives, and the correction operator disappears.
 SELECT
-  CONCAT(p.account, '|', p.ticker),
+  p.acct_key,
   JSON_OBJECT('account' VALUE p.account, 'ticker' VALUE p.ticker,
               'net_qty' VALUE p.net_qty,
               'price' VALUE CAST(lp.price AS STRING),
               'mv' VALUE CAST(CAST(p.net_qty AS DECIMAL(18, 0)) * lp.price AS STRING),
               'as_of' VALUE GREATEST(p.as_of, lp.event_time))
 FROM (
-  SELECT JSON_VALUE(`val`, '$.account') AS account,
-         JSON_VALUE(`val`, '$.ticker') AS ticker,
+  SELECT CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')) AS acct_key,
+         MAX(JSON_VALUE(`val`, '$.account')) AS account,
+         MAX(JSON_VALUE(`val`, '$.ticker')) AS ticker,
          SUM(CAST(JSON_VALUE(`val`, '$.qty') AS BIGINT)) AS net_qty,
          MAX(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT)) AS as_of
   FROM deduped
-  GROUP BY JSON_VALUE(`val`, '$.account'), JSON_VALUE(`val`, '$.ticker')
+  GROUP BY CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker'))
 ) p
 JOIN latest_price lp ON p.ticker = lp.symbol;
 
