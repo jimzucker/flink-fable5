@@ -164,3 +164,38 @@ but it joins on `ticker`, a non-key column. Fixing that needs a temporal join
 against a versioned table, which cannot be expressed against a CTE inside a
 fused statement set. Fusion and upsert-key preservation genuinely conflict for
 that one output; it is an engine limitation, not a coding mistake.
+
+## 4. Workload shape — 10 tickers, and the mixes are not identical
+
+| | Count |
+|---|---|
+| Tickers | **10** |
+| Accounts | **5** |
+| `account\|ticker` keys | **50** |
+| Trade rate | 100/s |
+| Price rate | 10,000/s |
+
+**The benchmark is ~99% price ticks by design** (100:1). Every headline number
+is therefore dominated by the price/conflation path — the path that runs
+straight through the ten-ticker narrowing. That is why salting moved DataStream
+2.66x, and why "10 tickers" is the central constraint of this workload rather
+than a footnote. A trade-heavy workload would key on `account|ticker` (50) or
+`trade_id` (millions) and behave completely differently. It is also what caused
+the idle-partition watermark stall against 48 buckets.
+
+**Measured mixes differ slightly between clouds:**
+
+| | Trades | Prices | Trade share |
+|---|---|---|---|
+| AWS (12 generators x 20 min) | ~1.44M | 143.7M | 1.0% |
+| Confluent cap-10 drain | 153,637 | 36.5M | 0.42% |
+
+Cause: in-cloud amplification copies ONLY `prices`
+(`INSERT INTO prices SELECT FROM prices-seed`), so Confluent's backlog is more
+price-skewed than the AWS one. Since prices are the expensive path, this
+slightly FLATTERS Confluent — more of its work is the conflation that salting
+optimises, less is dedup and position aggregation. Small at these ratios, but
+it is a real asymmetry and any close cross-cloud call must state it.
+
+Fix if a tighter comparison is needed: amplify `trades` in the same proportion,
+or seed both clouds with the generator alone and accept the smaller backlog.
