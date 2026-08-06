@@ -1,0 +1,66 @@
+=== 1/4 confirm unsalted config is deployed ===
+price.salt.factor = 1
+transaction.timeout.ms = 540000
+delivery = exactly-once
+=== 2/4 start app ===
+app RUNNING at 16:34:33Z
+=== 3/4 wait for drain to actually begin, then health-gate ===
+DRAIN_START=16:37:07Z rate=16564.233333333334
+fullRestarts 0.0 -> 0.0
+healthy — measuring
+=== 4/4 time drain to completion ===
+16:39:09Z rate=16564.233333333334
+16:40:09Z rate=33105.5
+16:41:10Z rate=35037.933333333334
+16:42:11Z rate=34457.28333333333
+16:43:12Z rate=34457.28333333333
+16:44:13Z rate=34457.28333333333
+16:45:13Z rate=34545.45
+16:46:14Z rate=35568.13333333333
+16:47:15Z rate=35568.13333333333
+16:48:15Z rate=35568.13333333333
+16:49:16Z rate=35571.26666666667
+16:50:17Z rate=35450.48333333333
+16:51:18Z rate=35566.583333333336
+16:52:19Z rate=35566.583333333336
+16:53:19Z rate=35566.583333333336
+16:54:20Z rate=28871.266666666666
+16:55:21Z rate=38124.066666666666
+16:56:22Z rate=38124.066666666666
+16:57:23Z rate=38124.066666666666
+16:58:23Z rate=47850.38333333333
+16:59:24Z rate=27478.7
+17:00:25Z rate=27478.7
+17:01:26Z rate=27478.7
+17:02:26Z rate=28004.216666666667
+17:03:27Z rate=28004.216666666667
+17:04:28Z rate=22763.233333333334
+17:05:29Z rate=22763.233333333334
+17:06:29Z rate=22763.233333333334
+17:07:30Z rate=23456.35
+17:08:31Z rate=50202.76666666667
+17:09:32Z rate=50202.76666666667
+17:10:32Z rate=50202.76666666667
+17:11:33Z rate=50192.96666666667
+17:12:34Z rate=49769.76666666667
+17:13:34Z rate=50458.98333333333
+17:14:35Z rate=50458.98333333333
+17:15:36Z rate=50458.98333333333
+17:16:37Z rate=50516.96666666667
+17:17:37Z rate=32351.516666666666
+17:18:38Z rate=32351.516666666666
+17:19:39Z rate=32351.516666666666
+17:20:40Z rate=0.0
+DRAIN_END=17:20:40Z
+DRAIN_SECONDS=2613
+
+=== AWS PERF PROBE: unsalted-final (last 30 min, 1-min datapoints) ===
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=30
+  prices_parsed_per_sec            avg=     85719.0  max=    183684.8  points=30
+  dedup_out_per_sec                avg=         0.0  max=         0.0  points=30
+  mv_account_out_per_sec           avg=        23.1  max=        47.3  points=30
+  busy_ms_per_sec_max              avg=       887.7  max=      1000.0  points=30
+  backpressure_ms_per_sec_max      avg=       851.8  max=       982.0  points=30
+  ticks_conflated_total            avg=1808071656.7  max=2391919820.0  points=30
+  kpus                             no data yet
+A6_UNSALTED_DRAIN_COMPLETE

@@ -1,0 +1,23 @@
+Confluent Cloud Flink rejects the CR-1 mechanism. Submitting a table with the
+upsert-kafka sink buffering options that AWS SQL uses returns:
+
+  PHASE: FAILED
+  DETAIL: Unsupported options found for 'cadence-probe'.
+
+  Unsupported options:
+    sink.buffer-flush.interval
+    sink.buffer-flush.max-rows
+
+  Supported options:
+    changelog.mode, connector, error-handling.log.target, error-handling.mode,
+    kafka.cleanup-policy, kafka.compaction.time, kafka.confluent.compute.pool,
+    kafka.confluent.view.flink.managed, kafka.confluent.view.sql,
+    kafka.consumer.isolation-level, kafka.max-message-size,
+    kafka.message-timestamp-type, kafka.producer.compression.type,
+    kafka.retention.size, kafka.retention.time, key.fields-prefix, key.format,
+    key.raw.charset, key.raw.endianness, late-handling.mode, scan.bounded, ...
+
+There is no sink buffering or output-cadence control of any kind in the list.
+CR-1 ("do not update a number faster than a human can read it") is therefore
+one connector option on AWS SQL and NOT EXPRESSIBLE on Confluent SQL.
+Captured 2026-08-06 against cluster flink-fable5-kafka (Basic, max_ecku 50).

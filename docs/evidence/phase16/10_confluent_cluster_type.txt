@@ -1,0 +1,9 @@
+GET /cmk/v2/clusters?environment=<env>
+  cluster : flink-fable5-kafka
+  config  : {"kind": "Basic", "max_ecku": 50}
+  status  : {"phase": "PROVISIONED"}
+
+Basic on the eCKU model => NO per-partition charge. Per-partition pricing
+existed only in the legacy Base+Partitions model, which predates this org
+(cutover 2024-04-16). Raising 6 -> 48 buckets therefore cost $0, while the same
+288 partitions on MSK bill $0.0015/partition-hr (~$0.43/hr, ~$315/mo).

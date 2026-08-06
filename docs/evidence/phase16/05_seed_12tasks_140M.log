@@ -1,0 +1,20 @@
+=== 1/4 confirm app is stopped (backlog must accumulate unconsumed) ===
+app status: READY
+=== 2/4 scale generator to 12 tasks ===
+generator runningCount=12 at 15:00:34Z
+=== 3/4 seed 20 min ===
+generators stopped 15:20:35Z
+=== 4/4 total seeded volume across all tasks ===
+  generator/generator/c2bfdf1e85cc4300ad6af70af77ad3a7 -> prices=11610000
+  generator/generator/f7366dc3379048bbbd0b259c2e351bcb -> prices=11560000
+  generator/generator/8db9cf8db55f4789978bf619afde38ec -> prices=11650000
+  generator/generator/2fbb0484192247dda707b09c373539e9 -> prices=11640000
+  generator/generator/4ee9c9caccb040e8b76dda8c401b7510 -> prices=11710000
+  generator/generator/25d59adc019244578d6a2c076d11e72f -> prices=11640000
+  generator/generator/6ac23b7ab382407da18e038194e99678 -> prices=11640000
+  generator/generator/0e8505d2a69840ba9cb07af3cf8518c6 -> prices=11780000
+  generator/generator/fbe888eab7cf45dd980aed16fe2b603c -> prices=11680000
+  generator/generator/9f367835852948c0a8f949bc69a44988 -> prices=11690000
+  generator/generator/b393c9d3656b48e5b815804dc1fae6f9 -> prices=11780000
+  generator/generator/10299d70a8b84a99ad2a8b0a52f362a4 -> prices=11890000
+  generator/generator/1a759d2a6b904d659f2f81086b3f3f5e -> prices=3410000

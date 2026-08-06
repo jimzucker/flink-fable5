@@ -1,0 +1,21 @@
+drain start reference: 15:50:00Z (first non-zero input)
+16:00:17Z numRecordsInPerSecond=31298.666666666668
+16:01:18Z numRecordsInPerSecond=31291.633333333335
+16:02:19Z numRecordsInPerSecond=42191.7
+16:03:19Z numRecordsInPerSecond=42191.7
+16:04:20Z numRecordsInPerSecond=42191.7
+16:05:21Z numRecordsInPerSecond=10660.65
+16:06:21Z numRecordsInPerSecond=1240.7333333333333
+DRAIN_COMPLETE_AT=16:06:22Z
+=== final operator view ===
+
+=== AWS PERF PROBE: drain-final (last 25 min, 1-min datapoints) ===
+  trades_parsed_per_sec            avg=      1336.2  max=     22113.4  points=22
+  prices_parsed_per_sec            avg=    117195.3  max=    284991.2  points=22
+  dedup_out_per_sec                avg=       478.8  max=      7292.4  points=22
+  mv_account_out_per_sec           avg=        33.6  max=        45.9  points=20
+  busy_ms_per_sec_max              avg=       815.0  max=      1000.0  points=22
+  backpressure_ms_per_sec_max      avg=       401.0  max=       941.0  points=22
+  ticks_conflated_total            avg=    360576.2  max=    706140.0  points=16
+  kpus                             no data yet
+A4_DRAIN_END_COMPLETE

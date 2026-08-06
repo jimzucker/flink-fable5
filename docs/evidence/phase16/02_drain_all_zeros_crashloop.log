@@ -1,0 +1,59 @@
+=== 1/4 start the app (replays from earliest = the drain) ===
+status before: READY
+status now: RUNNING at 15:25:29Z
+=== 2/4 wait out the ~2-min metric blind spot ===
+=== 3/4 sample the drain every 2 min ===
+--- sample 1 at 15:28:59Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=3
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=3
+  kpus                             no data yet
+--- sample 2 at 15:31:03Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=2
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=2
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=2
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=2
+  kpus                             no data yet
+--- sample 3 at 15:33:08Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=1
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=1
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=1
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=1
+  kpus                             no data yet
+--- sample 4 at 15:35:12Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=3
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=3
+  kpus                             no data yet
+--- sample 5 at 15:37:16Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=3
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=3
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=3
+  kpus                             no data yet
+--- sample 6 at 15:39:20Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=1
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=1
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=1
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=1
+  kpus                             no data yet
+--- sample 7 at 15:41:24Z ---
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=2
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=2
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=2
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=2
+  kpus                             no data yet
+=== 4/4 final wide window (whole drain) ===
+
+=== AWS PERF PROBE: drain-full (last 20 min, 1-min datapoints) ===
+  trades_parsed_per_sec            avg=         0.0  max=         0.0  points=14
+  prices_parsed_per_sec            avg=         0.0  max=         0.0  points=14
+  dedup_out_per_sec                avg=         0.0  max=         0.0  points=12
+  mv_account_out_per_sec           avg=         0.0  max=         0.0  points=9
+  busy_ms_per_sec_max              avg=      1000.0  max=      1000.0  points=14
+  backpressure_ms_per_sec_max      avg=         0.0  max=         0.0  points=14
+  ticks_conflated_total            no data yet
+  kpus                             no data yet
+A3_DRAIN_COMPLETE

@@ -1,0 +1,19 @@
+=== 1/4 utilisation audit — does this config let compute be used? ===
+# AWS utilisation audit (parallelism=20)
+
+PASS  partitions >= parallelism                  48 partitions >= parallelism 20
+PASS  cardinality: dedup-by-trade-id             key=trade_id cardinality=1000000 (wide — one key per trade); at parallelism 20 at most 20 worker(s) can be busy
+PASS  cardinality: position-by-account-ticker    key=account|ticker cardinality=500 (wide); at parallelism 20 at most 20 worker(s) can be busy
+WARN  cardinality: position-by-ticker            key=ticker cardinality=10 (narrow, fed by deduped trades); at parallelism 20 at most 10 worker(s) can be busy — 10 idle, but downstream of conflation so the volume reaching it is bounded. Narrow because the domain has 10 tickers; not fixable by config.
+WARN  cardinality: mv-by-account-ticker          key=ticker cardinality=10 (narrow, post-conflation); at parallelism 20 at most 10 worker(s) can be busy — 10 idle, but downstream of conflation so the volume reaching it is bounded. Narrow because the domain has 10 tickers; not fixable by config.
+WARN  cardinality: mv-by-ticker                  key=ticker cardinality=10 (narrow, post-conflation); at parallelism 20 at most 10 worker(s) can be busy — 10 idle, but downstream of conflation so the volume reaching it is bounded. Narrow because the domain has 10 tickers; not fixable by config.
+PASS  cardinality: price-conflate-local          key=symbol|salt cardinality=80 (salted: 10 x factor 8); at parallelism 20 at most 20 worker(s) can be busy
+PASS  compute reachable by the narrowest stage   billed ~6 KPU for parallelism 20; narrowest stage can use 20 — 0% of parallelism unreachable
+
+All checks passed — provisioned compute is reachable by the topology.
+
+=== 2/4 stop the Flink app so the backlog accumulates unconsumed ===
+app status: RUNNING
+app status now: READY
+=== 3/4 run the generator for 12 min to build the backlog ===
+generator started 14:44:08Z; seeding 12 min
