@@ -83,6 +83,27 @@ public final class SqlPipeline {
             conf.put("table.exec.mini-batch.allow-latency", miniBatchMs + " ms");
             conf.put("table.exec.mini-batch.size", String.valueOf(params.getLong("sql.minibatch.size", 5_000L)));
         }
+        // Source idle timeout. This is a CORRECTNESS requirement for this
+        // workload, not tuning, and it defaults ON for that reason.
+        //
+        // The price key space is 10 tickers hashed across 48 partitions, so at
+        // most 10 partitions ever carry data and 38 are permanently empty. An
+        // empty partition never advances its watermark, which holds the global
+        // watermark at its initial value for ever: the event-time TUMBLE in the
+        // conflation CTE never fires and the job emits NOTHING while happily
+        // consuming at full speed. Observed on Confluent as a statement RUNNING
+        // for an hour at 119k records/sec with zero rows on all four sinks, no
+        // error and no DEGRADED status.
+        //
+        // Raising the partition count to lift the source-parallelism ceiling is
+        // what creates this. "partitions >= parallelism" is only half the rule;
+        // the other half is "partitions <= key cardinality, or set this".
+        //
+        // 0 disables it (restores the stalling behaviour) for A/B testing.
+        long idleMs = params.getLong("sql.source.idle.timeout.ms", 5_000L);
+        if (idleMs > 0) {
+            conf.put("table.exec.source.idle-timeout", idleMs + " ms");
+        }
         // Job-wide state TTL. NOT the same knob as dedup.state.ttl.ms: SQL cannot
         // scope a TTL to the dedup operator alone, and expiring the position
         // aggregates would change the answers, so this defaults to "never".
