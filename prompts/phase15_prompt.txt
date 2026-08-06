@@ -420,3 +420,40 @@ salt/conflate properties present, and CloudWatch operator names were SQL plan
 operators (Deduplicate_19, Calc_20) rather than the DataStream UIDs. Note this
 also means aws_perf_probe.py's TaskOperator filters read ZERO in SQL mode --
 another reason records/elapsed is the primary measure.
+
+CRITICAL: IDLE PARTITIONS STALL EVENT-TIME WATERMARKS (self-inflicted)
+--------------------------------------------------------------------------
+SYMPTOM: Confluent statement set RUNNING for an hour, consuming `prices` at up
+to 7.15M/min (119k/s), writing ZERO rows to all four sinks. No error, no
+DEGRADED, phase stayed RUNNING.
+
+CAUSE: 10 tickers hashed into 48 buckets => at most 10 buckets ever carry data
+and 38 are PERMANENTLY EMPTY. An empty partition never advances its watermark,
+so the event-time TUMBLE never fires and no window ever closes. The job reads
+for ever and emits nothing.
+
+SELF-INFLICTED: raising buckets 6 -> 48 to remove the source-parallelism
+ceiling is what created this. The rule "partitions >= parallelism" is only half
+the story; the other half is that partitions ABOVE KEY CARDINALITY are dead
+weight AND actively dangerous on an event-time pipeline.
+
+FIX (verified): sql.tables.scan.idle-timeout=5000. Output appeared immediately
+on all four sinks. Confluent accepts the option.
+
+CONTAMINATES THE AWS SQL CELL: SQL-on-AWS ran the same event-time TUMBLE
+(sql.price.conflate.ms=250) against 48-partition topics with the same 10
+tickers. The CloudWatch dashboard captured at the time reads
+"Volume out - bytes/sec per sink: No data available". So the ~54,400 rec/s
+figure very likely measured READING, not end-to-end processing, and the
+"DataStream is 2.69x faster than SQL" claim is NOT SOUND until re-run with
+table.exec.source.idle-timeout set. I noticed the empty-sink panel, said I
+would check it, and published the number anyway.
+
+WHY DATASTREAM IS IMMUNE: it uses WatermarkStrategy.noWatermarks() and
+processing-time timers throughout, so idle partitions cannot stall it. Both
+DataStream numbers (salted ~146,300/s; unsalted control, 2.66x) stand.
+
+META-LESSON, and the expensive one: EVERY cell was validated on the INPUT side
+(records consumed, backpressure, restarts, checkpoints) and NEVER on the OUTPUT
+side. A pipeline that reads fast and writes nothing scores beautifully on a
+throughput metric. Assert non-zero SINK traffic before any drain number counts.
