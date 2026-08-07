@@ -129,3 +129,81 @@ A faster wrong answer is not a result.
 * Run `scripts/utilization_audit.py` before trusting a measurement.
 * Capture Confluent metrics **during** the run — teardown destroys them.
 * Two runs minimum where a claim is close: run-to-run variance is ~25%.
+
+---
+
+# RESULTS — the IPO hotspot, measured and solved
+
+Producer-side ingest, 4 producers, uncapped rate, 180s each, one variable changed.
+
+| Case | Feed | Producer key | Ingest | vs uniform | Per-symbol ordering |
+|---|---|---|---|---|---|
+| A2 | uniform | `symbol` | **873,333/s** | baseline | kept |
+| **B2** | **90% one ticker** | `symbol` | **293,333/s** | **−66%** | kept |
+| C2 | 90% one ticker | `salted` | 764,444/s | −12% | **lost** |
+| **D3** | 90% one ticker | **`adaptive`** | **788,888/s** | **−10%** | **kept for cold symbols** |
+
+**A hot listing costs two thirds of ingest — before Flink processes a record.**
+Every producer writing the hot symbol queues behind the single leader broker
+owning that symbol's partition. Adding producers makes it worse: they contend
+for the same leader.
+
+**No downstream tuning could have fixed this.** Salting the conflation, fusing
+statements, parallelism, CFUs — all operate downstream of partition assignment.
+
+**Adaptive keying is strictly better than blanket salting**, not a tradeoff:
+higher ingest (788,888 vs 764,444) *and* quiet symbols keep their ordering.
+Salting a quiet symbol scatters its records for no benefit while giving up a
+guarantee.
+
+## Production configuration
+
+```
+--generator.price.key.mode adaptive
+--generator.hot.factor 2.0     # hot = 2x an even share of recent ticks
+--generator.hot.width  48      # fan the hot name across all partitions
+```
+
+## Why changing the input design is legitimate here
+
+This pipeline never consumes per-symbol ordering: conflation selects `MAX` by
+`event_time`, dedup keys on `trade_id`. Neither depends on a symbol's records
+sharing a partition or arriving in order. Keying by bare symbol was buying a
+guarantee the pipeline does not use, and paying for it with a single-partition
+ceiling on the busiest name of the day.
+
+**The validation suite is the proof, not this argument** — it re-derives every
+output from the raw topics and must pass unchanged on the salted runs.
+
+## The full stack of ceilings, and what clears each
+
+| Ceiling | Cleared by write-time salting? |
+|---|---|
+| Producers → one leader broker | **yes** |
+| Partition → one consumer | **yes** |
+| Key → one Flink worker | **yes** |
+| `mv-by-ticker` → one worker | **no — irreducible** |
+
+The first three all derive from partition assignment, so one key change clears
+them together. The fourth cannot be widened — a price must meet its holders —
+but Phase 7 conflation bounds that stage's input to one tick per symbol per
+window, so 800k/s of IPO traffic arrives there as a handful per second.
+
+**The design that survives an IPO is: spread at the key, conflate before the
+narrow stage.** Neither alone suffices — spreading without conflation moves the
+pileup downstream; conflation without spreading leaves ingest stuck at 293k/s.
+
+## Retrospective: the evidence was already in Phase 16
+
+Twelve generator tasks produced ~7M prices each where a single task managed
+~11.7M in the same window. That was recorded as vague "MSK-side contention". It
+was producers contending for the ~ten partitions a symbol-keyed feed occupies —
+the same ceiling, unrecognised because the feed was uniform.
+
+## Method note
+
+The first attempt returned **44,666/s for both** the uniform and the 90%-hot
+case — identical to the digit, because the generator's own rate limit was
+binding rather than Kafka. **When two conditions that should differ return the
+same number, suspect the harness.** Third instance this project of a plausible
+number measuring the configuration rather than the system.
