@@ -281,3 +281,39 @@ question that was previously unanswerable:
 * Sample **CFU during the run**; the pool declining to draw compute it cannot
   use is the actual evidence, and telemetry dies with the pool.
 * Purge tables between runs.
+
+## CORRECTION — clean runs: keying fixes ingest, NOT processing
+
+Both runs purged tables first and seeded **exactly 19,260,000** prices.
+
+| Key mode | Seeded | Drain | True rate | CFU avg |
+|---|---|---|---|---|
+| `symbol` | 19,260,000 | 809s | **23,807 rec/s** | 3.77 |
+| `adaptive` | 19,260,000 | 816s | **23,603 rec/s** | 4.92 |
+
+**No measurable difference in processing throughput.** The earlier 2.29x
+consumer-side claim was entirely the contamination — the unclean run drained a
+double-sized mixed backlog, and that was carrying the whole result.
+
+**`sent_records` is NOT a valid proxy for records processed.** It counted 36.6M
+for adaptive against 19.7M for symbol on the *same* 19.26M seed, because the two
+plans read the source a different number of times. Use **seeded ÷ drain
+duration**, which is what the table above reports.
+
+### Revised conclusion
+
+| | `symbol` | `adaptive` | Effect |
+|---|---|---|---|
+| **Ingest** | 293,333/s | **788,888/s** | **2.7x — real** |
+| **Processing** | 23,807/s | 23,603/s | **none** |
+
+Write-time keying **fixes the ingest ceiling and does nothing for processing**,
+which is consistent on reflection: once records are in the topic, the source
+reads 48 partitions either way, and the ticker-keyed stages downstream are
+unchanged at ten keys however the records were distributed. Spreading the write
+cannot widen a stage whose key space is the business domain.
+
+**So the hot-ticker answer is narrower than the ingest number suggests:**
+adaptive keying makes the tape *land*; it does not make the pipeline *process*
+it faster. Surviving an IPO needs both the keying fix AND enough compute for a
+processing stage that remains ten-way parallel.
