@@ -529,3 +529,43 @@ REVISED CONCLUSIONS:
 The earlier "three-way convergence at ~53k" was tidy and wrong -- one of the
 three numbers was measuring reading, not processing. A pattern that explains
 itself neatly across independent measurements deserves MORE scrutiny, not less.
+
+GAP CLOSED — MEASURED CFU OVERTURNS THE SCALING VERDICT (AGAIN)
+--------------------------------------------------------------------------
+Redeployed Confluent purely to sample compute_pool_utilization/current_cfus
+DURING the drains, because the metrics API 403s once a pool is deleted.
+
+  cap-10  44,433,431 / 1127s = 39,426 rec/s  @ CFU avg 9.61, MAX 10 (cap 10)
+  cap-20  79,879,857 /  882s = 90,567 rec/s  @ CFU avg 7.64, MAX 10 (cap 20)
+
+THE CAP-20 POOL NEVER EXCEEDED 10 CFUs. It delivered 2.3x the throughput while
+consuming FEWER CFUs than cap-10. That is not scaling -- the extra compute was
+never touched.
+
+THE ARTIFACT I BUILT INTO BOTH SCALING EXPERIMENTS: average rate over a drain
+includes ramp-up, so a SMALLER backlog is penalised (startup is a larger share
+of its window). cap-20 had the bigger backlog in BOTH experiments (63.74M vs
+36.68M originally; 79.9M vs 44.4M here). The "scaling" was backlog size.
+
+=> WITHDRAW the "Confluent scales 1.50x for 2x CFUs" claim published earlier
+   today. The job cannot use more than ~10 CFUs because ten tickers cap usable
+   parallelism at ten. The ORIGINAL "+8%, the CFU dial saturates" finding was
+   RIGHT ABOUT THIS WORKLOAD; my correction of it was wrong.
+
+Two separate things were true at once and I conflated them:
+  * the 6-bucket ceiling WAS real and did confound the old runs (source could
+    not read past 6 subtasks);
+  * removing it did NOT unlock scaling, because the ten-ticker key space is a
+    lower ceiling still. Fixing the visible constraint revealed the binding one.
+
+RUN-TO-RUN VARIANCE IS ~25%, not the +-13% previously recorded: the same cap-10
+config measured 52,779 rec/s earlier and 39,426 rec/s here. Any single-run gap
+under ~25% is indistinguishable from noise -- which makes the cross-cloud SQL
+result (76,956 AWS vs 79,000 Confluent, 3% apart) properly read as "the same",
+and that is the stronger claim anyway.
+
+COST EFFICIENCY, now measured rather than ceiling:
+  cap-10  19,536 rec/s per $/hr  ($2.02/hr at 9.61 CFU)
+  cap-20  56,449 rec/s per $/hr  ($1.60/hr at 7.64 CFU)
+Both are contaminated by the same ramp-up artifact, so treat them as bounds and
+compare only same-backlog runs.
