@@ -17,8 +17,49 @@ ceilings built into the test rig.
 | DataStream (AWS), unsalted *(control)* | ~140M / 2613s | ~53,600 rec/s | structurally immune |
 | ~~SQL (AWS), first attempt~~ | ~144M / 2646s | ~~~54,400 rec/s~~ | **NO — stalled, superseded** |
 
-AWS: parallelism 20, ~6 billed KPU, ~$1.09/hr including MSK partitions.
-Confluent: Basic/eCKU cluster, compute billed per CFU-minute only while running.
+## Utilisation, waste and cost efficiency
+
+**Correction: AWS is $1.84/hr, not the ~$1.09/hr quoted earlier in this
+session** — that figure omitted the MSK Serverless cluster base.
+
+| Component | $/hr | Share |
+|---|---|---|
+| MSF compute (6 billed KPU @ $0.11) | $0.66 | 36% |
+| MSK Serverless base | $0.75 | 41% |
+| MSK partitions (288 @ $0.0015) | $0.43 | 23% |
+
+**64% of the AWS bill is Kafka, not Flink.** Every tuning effort in this project
+went at the smaller half of the invoice.
+
+| Config | rec/s | CPU% | Usable slots | Idle | rec/s per $/hr |
+|---|---|---|---|---|---|
+| **DataStream salted** | 146,300 | 76.3 | 20/20 | 0% | **79,425** |
+| SQL (AWS) verified | 76,956 | 66.5 | 20/20 | 0% | 41,779 |
+| DataStream unsalted | 53,600 | 63.1 | **10/20** | **50%** | 29,099 |
+| SQL (Confluent) cap-10 | 52,800 | n/a | n/a | n/a | 25,143 † |
+| SQL (Confluent) cap-20 | 79,000 | n/a | n/a | n/a | **18,810** † |
+
+† Confluent figures are the pool **ceiling** cost (max_cfu x $0.21). Actual
+CFU-minutes were not captured before the pools were deleted — a real gap, and
+if the pools ran below cap the true efficiency is better than shown.
+
+**Where capacity is actually wasted:**
+
+* **Unsalted DataStream pays for 20 slots and can use 10.** Ten tickers means
+  ten workers on the narrow stages; 50% of purchased parallelism is
+  structurally unreachable. This is the clearest "paying for nothing" case in
+  the set, and salting is what recovers it.
+* **Operator busy-time averages ~1% while CPU sits at 63–76%.** The gap is
+  framework overhead — serialization, network, checkpointing, GC — plus severe
+  skew: the busiest subtask hit 100% (`busyTimeMsPerSecond` Maximum = 1000)
+  while the average across subtasks stayed near 1%. A few workers saturated,
+  most idle. That spread *is* the ten-ticker key space showing up in the
+  telemetry.
+* **Scaling Confluent made cost-efficiency worse.** cap-10 → cap-20 buys 1.5x
+  throughput for 2x the compute ceiling, so cost per record rises ~33%.
+  "It scales" and "it scales economically" are different claims.
+
+Confluent: Basic/eCKU cluster, Flink compute billed per CFU-minute while running.
 
 ## The five findings
 
