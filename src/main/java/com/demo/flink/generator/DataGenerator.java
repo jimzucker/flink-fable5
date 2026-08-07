@@ -42,6 +42,14 @@ public final class DataGenerator {
         String pricesTopic = params.get("topic.prices", "prices");
         // "symbol" (default, unchanged) or "salted" — see the send() call below.
         String priceKeyMode = params.get("generator.price.key.mode", "symbol");
+        // Skewed feed. Real tape is never uniform: on an IPO, an index rebalance
+        // or a squeeze, ONE symbol can carry most of the volume. A uniform
+        // benchmark hides the consequence entirely, because "one worker per key"
+        // only looks like parallelism when the keys are evenly loaded.
+        // hot.share = fraction of price ticks forced onto generator.hot.ticker
+        // (index into the ticker array). 0 disables, restoring a uniform feed.
+        double hotShare = params.getDouble("generator.hot.share", 0.0);
+        int hotIdx = params.getInt("generator.hot.ticker", 0);
         int tradesPerSec = params.getInt("generator.trades.per.sec", 10);
         int pricesPerSec = params.getInt("generator.prices.per.sec", 20);
         int numAccounts = params.getInt("generator.accounts", 5);
@@ -172,7 +180,9 @@ public final class DataGenerator {
                 }
 
                 for (int i = 0; i < pricesPerSec; i++) {
-                    int idx = random.nextInt(numTickers);
+                    int idx = (hotShare > 0 && random.nextDouble() < hotShare)
+                            ? Math.min(hotIdx, numTickers - 1)
+                            : random.nextInt(numTickers);
                     if (priceCentsOverride > 0) {
                         priceCents[idx] = priceCentsOverride; // Case 2: extreme price, config only
                     } else {
