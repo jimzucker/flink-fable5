@@ -88,6 +88,19 @@ public final class DataGenerator {
         // needing a second program to recompute 15,000 aggregates.
         // -1 keeps the random +/-10..2000 quantities used for realistic load.
         long qtyOverride = params.getLong("generator.qty.override", -1L);
+        // Distinct, static price per symbol for correctness runs: symbol i is
+        // priced at (i+1) dollars and never moves.
+        //
+        // A single fixed price for every symbol is too simple to be a test: if
+        // all prices are $1.00 then a join that matched the WRONG symbol, or a
+        // conflation that picked the wrong tick, produces exactly the same
+        // answer as a correct one. Distinct prices make a mis-join show up as a
+        // wrong multiple. Static prices make conflation lag impossible, so the
+        // market-value check stays unambiguous without giving up that coverage.
+        //
+        // Market value then = (count of deduped trades) x (symbol index + 1)
+        // dollars -- still arithmetic a human can verify by eye.
+        boolean pricePerSymbol = params.getBoolean("generator.price.per.symbol", false);
         // Trade ids are namespaced per run so a restarted generator produces NEW
         // trades instead of replaying ids that dedup (correctly) absorbs.
         // Pin it in config for fully reproducible runs.
@@ -111,7 +124,9 @@ public final class DataGenerator {
             tickers[i] = i < TICKER_UNIVERSE.length
                     ? TICKER_UNIVERSE[i]
                     : String.format("SYM%04d", i);
-            priceCents[i] = 1_000 + random.nextInt(49_000); // $10.00 - $500.00
+            priceCents[i] = pricePerSymbol
+                    ? (long) (i + 1) * 100          // symbol i -> $(i+1).00, static
+                    : 1_000 + random.nextInt(49_000); // $10.00 - $500.00
         }
 
         Properties props = new Properties();
@@ -242,7 +257,9 @@ public final class DataGenerator {
                     } else {
                         idx = random.nextInt(numTickers);                // uniform
                     }
-                    if (priceCentsOverride > 0) {
+                    if (pricePerSymbol) {
+                        // leave it alone: the whole point is that it never moves
+                    } else if (priceCentsOverride > 0) {
                         priceCents[idx] = priceCentsOverride; // Case 2: extreme price, config only
                     } else {
                         long delta = Math.round(priceCents[idx] * random.nextGaussian() * 0.001);

@@ -68,9 +68,16 @@ Correctness checking is far easier when the numbers are simple enough to verify
 by hand rather than by a second program.
 
 ```
---generator.qty.override           1     # every trade is 1 share
---generator.price.cents.override   100   # every price is $1.00
+--generator.qty.override         1      # every trade is 1 share
+--generator.price.per.symbol     true   # symbol i is $(i+1).00, and never moves
 ```
+
+**Not a single fixed price for everything** — that is too simple to be a test.
+If every price were $1.00, a join that matched the WRONG symbol, or a conflation
+that picked the wrong tick, would produce exactly the same answer as a correct
+one. Distinct prices make a mis-join show up as a wrong multiple; static prices
+make conflation lag impossible, so the market-value check stays unambiguous
+without giving up that coverage.
 
 With those two settings the expected outputs become arithmetic anyone can do in
 their head:
@@ -79,17 +86,29 @@ their head:
 |---|---|
 | position by account+ticker | **count of deduped trades** for that key |
 | position by ticker | sum of its accounts' counts |
-| MV by account+ticker | **= position, in dollars** (position x $1.00) |
-| MV by ticker | = ticker position, in dollars |
+| MV by account+ticker | **= position x (symbol index + 1) dollars** |
+| MV by ticker | = ticker position x its own price |
 | sum over accounts | must equal the ticker position exactly |
 
 Any rounding error, float creep, double-count, dropped record or duplicate that
 slipped through shows up as an **off-by-N a human can see** — no need to trust a
 recomputation program that could share a bug with the pipeline.
 
-Run the correctness pass with simple numbers; run the performance pass with
-realistic quantities and prices (they exercise the decimal path). Both must
-validate, but simple numbers make a failure legible instead of merely detected.
+### Two passes, different jobs
+
+| Pass | Config | Catches |
+|---|---|---|
+| **1. Simple** | `qty=1`, distinct static prices | logic errors, mis-joins, dropped records, double-counts — **legibly**, as an off-by-N |
+| **2. Realistic** | random +/- qty, walking prices | decimal/rounding, negative positions, conflation lag, and **the config actually being benchmarked** |
+
+**Pass 2 is what gates the performance number**, because the throughput runs use
+realistic data — validating simple numbers would not prove the thing being
+claimed. Pass 1 is diagnostic: when it fails it fails *readably*, so a defect
+reads as "this position is 3 short" rather than "expected 47,283,910, got
+47,283,907".
+
+Run 1 first. If there is a logic bug, find it in arithmetic checkable by eye,
+not buried in decimal aggregates across 15,000 keys.
 
 ### 2. Validate at volume, then measure
 
