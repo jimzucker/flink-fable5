@@ -50,6 +50,11 @@ public final class DataGenerator {
         // (index into the ticker array). 0 disables, restoring a uniform feed.
         double hotShare = params.getDouble("generator.hot.share", 0.0);
         int hotIdx = params.getInt("generator.hot.ticker", 0);
+        // adaptive mode: a symbol is hot once its share exceeds hotFactor x an
+        // even share; hot symbols fan out across hotWidth partitions, the rest
+        // keep a bare symbol key and their per-symbol ordering.
+        double hotFactor = params.getDouble("generator.hot.factor", 2.0);
+        int hotWidth = params.getInt("generator.hot.width", 48);
         int tradesPerSec = params.getInt("generator.trades.per.sec", 10);
         int pricesPerSec = params.getInt("generator.prices.per.sec", 20);
         int numAccounts = params.getInt("generator.accounts", 5);
@@ -136,6 +141,7 @@ public final class DataGenerator {
             }
         }
 
+        long[] symbolCounts = new long[numTickers];
         long tradeSeq = 0;
         long tradesSent = 0;
         long duplicatesSent = 0;
@@ -209,8 +215,12 @@ public final class DataGenerator {
                     // reads the symbol out of the VALUE, never the key. "salted"
                     // spreads records across all partitions so the source can read
                     // wide. Default stays "symbol" so existing runs are unchanged.
-                    producer.send(new ProducerRecord<>(pricesTopic,
-                            priceKey(priceKeyMode, price.symbol, pricesSent), json));
+                    symbolCounts[idx]++;
+                    String pk = "adaptive".equalsIgnoreCase(priceKeyMode)
+                            ? adaptiveKey(price.symbol, symbolCounts[idx], pricesSent + 1,
+                                          numTickers, hotFactor, hotWidth, pricesSent)
+                            : priceKey(priceKeyMode, price.symbol, pricesSent);
+                    producer.send(new ProducerRecord<>(pricesTopic, pk, json));
                     pricesSent++;
                     bytesSent += json.length();
                 }
