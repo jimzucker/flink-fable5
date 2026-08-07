@@ -1,0 +1,19 @@
+%6|1786138324.454|GETSUBSCRIPTIONS|rdkafka#consumer-1| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to 9kppUUpZQAGCInxqPtFJWQ
+%6|1786138326.522|GETSUBSCRIPTIONS|rdkafka#consumer-2| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to cW29T9OpQ5S76nLBUbFdmg
+%6|1786138328.629|GETSUBSCRIPTIONS|rdkafka#consumer-3| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to tmY7jxRORYmBy02ONz5c8g
+%6|1786138330.003|GETSUBSCRIPTIONS|rdkafka#consumer-4| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to UMJrxh99R0S8/m6sHUbfAw
+%6|1786138357.422|GETSUBSCRIPTIONS|rdkafka#consumer-5| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to QWWHcZkGTQehQjcE7S8OzA
+%6|1786138385.058|GETSUBSCRIPTIONS|rdkafka#consumer-6| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to FMInrjSGSaqAZ0fqbPDy3A
+%6|1786138412.680|GETSUBSCRIPTIONS|rdkafka#consumer-7| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to axGvRC//ReOKlxZ8qzXOMw
+
+streamed: trades=4,450 prices=44,500 symbols=30 conflated=0
+published: position=150  position=30  mv=150  mv=30
+
+  [PASS] dedup: 206 duplicates seen, 4,244 unique of 4,450
+  [PASS] positions by account+ticker reproducible: 150 keys checked, 0 mismatched
+  [PASS] positions by ticker reproducible: 30 keys checked, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 30 tickers rolled up, 0 disagree
+  [PASS] MV by account == position x FINAL price: 150 checked, 0 wrong
+  [PASS] MV by ticker == position x FINAL price: 30 checked, 0 wrong
+
+VALIDATION PASSED — all six checks

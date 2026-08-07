@@ -76,7 +76,12 @@ public final class DataGenerator {
         int tradesPerSec = params.getInt("generator.trades.per.sec", 10);
         int pricesPerSec = params.getInt("generator.prices.per.sec", 20);
         int numAccounts = params.getInt("generator.accounts", 5);
-        int numTickers = Math.min(params.getInt("generator.tickers", 10), TICKER_UNIVERSE.length);
+        // NOT clamped to TICKER_UNIVERSE.length. That Math.min silently capped
+        // every run at 30 symbols, so a "3,000-symbol" dataset was really 30 and
+        // the Zipf curve spread over 30 names instead of 3,000. Names beyond the
+        // hardcoded universe are synthesised below; symbol COUNT is what drives
+        // key-space behaviour, not the names.
+        int numTickers = Math.max(1, params.getInt("generator.tickers", 10));
         long seed = params.getLong("generator.seed", 42L);
         double duplicateRatio = params.getDouble("generator.duplicate.ratio", 0.05);
         long priceCentsOverride = params.getLong("generator.price.cents.override", -1L);
