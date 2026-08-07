@@ -1,5 +1,24 @@
 # Performance Results — the same trading pipeline on two clouds
 
+> # ⚠ SUPERSEDED
+>
+> **The performance numbers in this file are retired.** Several were measured
+> against ceilings built into the test rig — 6-bucket tables that capped a
+> source at 6 readers, and a stalled SQL run that consumed at full speed while
+> writing nothing.
+>
+> **Current results: [`PHASE16_RESULTS.md`](PHASE16_RESULTS.md).**
+>
+> Specifically retired: the 435k rec/s AWS figure (predates exactly-once and
+> CR-1), "Confluent saturates / +8% for +60% compute" (right conclusion, wrong
+> reason), the "+85% from salting" figure (a standalone statement, never in the
+> end-to-end pipeline), and all cost figures (they omit the MSK base charge).
+>
+> This file is kept for the phase-by-phase method and the reasoning behind each
+> experiment, both of which still hold. Do not quote its numbers.
+
+
+
 ## Final scoreboard
 
 > **Phase 15 separated the variables that every earlier number confounded.**

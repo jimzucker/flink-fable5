@@ -259,23 +259,44 @@ s.shapes.add_picture("/Users/jimzucker/code/GitHub/flink-fable5/docs/images/aws-
 
 # ---------------- Slide 7c: Second cloud — Confluent ----------------
 s = slide()
-title(s, "Two clouds, one test suite — the measured scoreboard", "Same requirements, same data, same five correctness checks; deployable configs only")
+title(s, "Two clouds, one test suite — the measured scoreboard", "Same requirements, same data, same five correctness checks; every figure output-verified")
 table(s, [
     ["", "AWS (Managed Flink + MSK)", "Confluent Cloud (Flink SQL)"],
     ["Correctness - 5 independent checks", "All pass, exact to the cent", "All pass, exact to the cent"],
-    ["End-to-end latency (live)", "p50 267 ms  /  p99 495 ms", "p50 1.8 s  /  p99 2.1 s (SQL tuned for latency)"],
-    ["Full pipeline throughput", "435,000 msgs/sec", "127,000 msgs/sec"],
-    ["Sustained 28 min", "232,705/sec, deviation 30/sec", "360,900/sec, deviation 63,900/sec"],
-    ["Cost at equal work", "~ $2.39/hr all-in", "~ $3.36/hr + usage"],
+    ["Throughput - DataStream (Java)", "146,300 rec/sec", "not offered - SQL only"],
+    ["Throughput - the same SQL", "76,956 rec/sec", "39,400 - 90,600 rec/sec"],
+    ["Run-to-run variance", "~25% - gaps below that are noise", "~25%"],
+    ["Scaling", "bounded by the workload: 10 tickers cap parallelism at 10", "pool allowed 20 CFU drew a measured max of 10"],
+    ["Cost (known)", "$1.84/hr - 64% of it Kafka, not Flink", "compute measured; cluster charge not captured"],
+    ["Partitions", "billed: $0.0015/partition-hr", "free"],
     ["Code to build it", "~2,000 lines of Java", "~200 lines of SQL"],
-    ["What you operate", "a jar, an image, a VPC", "statements - nothing to deploy"],
-    ["Rate-limit an output (CR-1)", "config change - 0.96/key/sec vs 1.0 cap", "NOT EXPRESSIBLE for updating aggregations"],
-], 0.7, 1.8, 12.0, [4.2, 3.9, 3.9], size=13)
+    ["Rate-limit an output", "one connector option", "NOT EXPRESSIBLE"],
+    ["Bad query shapes", "silent - found by reading a plan", "named in the console with a doc link"],
+], 0.7, 1.7, 12.0, [4.2, 3.9, 3.9], size=12)
 bullets(s, [
-    ("AWS is faster, cheaper and steadier: one job passes records between operators in memory", 0, GREEN, True),
-    ("Confluent is ~10x less code and nothing to deploy - but the SQL must be ONE fused statement set; writing it as chained statements costs 15x latency (26.7s -> 1.8s when fixed)", 0, DARK, False),
-    ("The deciding factor was not speed: a plain requirement - do not update the screen faster than a human can read - is one config line on DataStream and has no supported construct in Confluent SQL", 0, ACCENT, True),
-], y=5.9, size=15, gap=9)
+    ("Java is ~2x faster than SQL on identical hardware, load and logic - that gap is real and outside the noise", 0, GREEN, True),
+    ("SQL runs at the SAME speed on both clouds: the language is the constraint, not the vendor", 0, DARK, True),
+    ("Neither platform was the scaling limit - the business problem has ten symbols, and ten things do not spread across twenty workers", 0, DARK, False),
+    ("The deciding factor was not speed: do not update a screen faster than a human can read is one option on AWS SQL and has no construct in Confluent SQL", 0, ACCENT, True),
+], y=6.0, size=14, gap=8)
+
+# ---------------- Slide 7d: How the numbers got trustworthy ----------------
+s = slide()
+title(s, "Most of the first numbers were wrong", "Three published conclusions did not survive re-measurement")
+table(s, [
+    ["What I published", "What was actually happening", "Corrected"],
+    ["SQL is 124x slower", "I wrote one SQL statement per Java operator, so every stage hopped through Kafka", "1.8s, not 26.7s"],
+    ["SQL is 2.69x slower", "That run consumed 119k rec/sec and wrote NOTHING for an hour - status green throughout", "~2x, output verified"],
+    ["Confluent does not scale", "6-bucket tables capped the source at 6 readers - my test rig, not the platform", "ceiling was mine"],
+    ["Confluent scales 1.5x", "Compared runs with different backlog sizes; ramp-up penalises the smaller one", "no scaling at all"],
+    ["~$1.09/hr on AWS", "Omitted the Kafka base charge entirely", "$1.84/hr"],
+], 0.7, 1.8, 12.0, [3.4, 5.4, 3.2], size=12)
+bullets(s, [
+    ("The root cause of the worst one: I checked on every test that records went IN. I never checked that records came OUT", 0, ACCENT, True),
+    ("A pipeline that reads fast and writes nothing scores beautifully on a throughput metric", 0, DARK, False),
+    ("The optimisation I argued would slow things down made them 2.66x faster - the test took 20 minutes, the argument would have shipped a version a third as fast", 0, GREEN, True),
+    ("Benchmarks mostly measure the person running them", 0, DARK, True),
+], y=5.6, size=15, gap=9)
 
 # ---------------- Slide 8: Production path ----------------
 s = slide()

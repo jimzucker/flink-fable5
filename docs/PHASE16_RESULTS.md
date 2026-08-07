@@ -1,220 +1,221 @@
-# Phase 16 — measured results
+# Results — measured, August 2026
 
-Every number below was produced in one session on matched rigs (48 partitions,
-exactly-once, salt factor 8, fused single job) and is either **output-verified**
-or explicitly marked withdrawn. Numbers inherited from earlier phases are
-retired rather than carried forward, because several were measured against
-ceilings built into the test rig.
+**This file supersedes all earlier performance numbers in this repository.**
+Every figure was measured in a single session on matched configurations and
+verified to have produced output. Where the data cannot support a claim, the
+claim is not made.
+
+If you have seen the older numbers, read [What changed](#what-changed).
+
+---
+
+## The workload, first — because it explains everything else
+
+| | |
+|---|---|
+| Tickers | **10** |
+| Accounts | 5 → 50 `account\|ticker` keys |
+| Trades | 100/s |
+| Prices | **10,000/s** |
+| Mix | **~99% price ticks** |
+
+**Ten tickers is the defining constraint of this benchmark.** Flink assigns each
+key to exactly one parallel worker, so a stage keyed on ticker can use at most
+ten workers however much compute is attached. Four of six stages are keyed that
+way, and the 99%-price mix routes almost all work through them.
+
+Nearly every result below traces back to that one fact. A ten-key benchmark
+measures key starvation at least as much as it measures a platform — read these
+as results for *this workload on these platforms*, not as general verdicts.
+
+---
 
 ## Throughput
 
-| Cell | Consumed / window | Throughput | Output verified |
-|---|---|---|---|
-| **DataStream (AWS), salted** | 143.68M / 982s | **~146,300 rec/s** | structurally immune |
-| SQL (Confluent), cap-20 | 63.74M / 807s | ~79,000 rec/s | yes |
-| SQL (Confluent), cap-10 | 36.68M / 695s | ~52,800 rec/s | yes |
-| **SQL (AWS)** | 84.11M / 1093s | **~76,956 rec/s** | yes |
-| DataStream (AWS), unsalted *(control)* | ~140M / 2613s | ~53,600 rec/s | structurally immune |
-| ~~SQL (AWS), first attempt~~ | ~144M / 2646s | ~~~54,400 rec/s~~ | **NO — stalled, superseded** |
+Measured by backlog drain: pre-load the topics, start from earliest, divide
+records consumed by elapsed time. Output was confirmed non-zero on all sinks
+before any number was accepted.
 
-## Utilisation, waste and cost efficiency
-
-**Correction: AWS is $1.84/hr, not the ~$1.09/hr quoted earlier in this
-session** — that figure omitted the MSK Serverless cluster base.
-
-| Component | $/hr | Share |
+| Configuration | Records / window | Throughput |
 |---|---|---|
-| MSF compute (6 billed KPU @ $0.11) | $0.66 | 36% |
-| MSK Serverless base | $0.75 | 41% |
-| MSK partitions (288 @ $0.0015) | $0.43 | 23% |
+| **DataStream (AWS), salted** | 143.68M / 982s | **146,300 rec/s** |
+| SQL (Confluent) | 4 runs | **39,400 – 90,600 rec/s** |
+| SQL (AWS) | 84.11M / 1,093s | **76,956 rec/s** |
+| DataStream (AWS), unsalted *(control)* | ~140M / 2,613s | 53,600 rec/s |
 
-**64% of the AWS bill is Kafka, not Flink.** Every tuning effort in this project
-went at the smaller half of the invoice.
+**Run-to-run variance is ~25%** — the same Confluent configuration measured
+39,426 and 52,779 rec/s on separate runs. Treat any gap below ~25% as noise.
 
-| Config | rec/s | CPU% | Hot-stage slots | rec/s per $/hr |
-|---|---|---|---|---|
-| **DataStream salted** | 146,300 | 76.3 | 20/20 | **79,425** |
-| SQL (AWS) verified | 76,956 | 66.5 | 20/20 | 41,779 |
-| DataStream unsalted | 53,600 | 63.1 | **10/20** | 29,099 |
-| SQL (Confluent) cap-10 | 39,426 | n/a | n/a | 9.61 CFU (cap 10) | withdrawn ‡ |
-| SQL (Confluent) cap-20 | 90,567 | n/a | n/a | **7.64 CFU (cap 20, max 10)** | withdrawn ‡ |
+### What the data supports
 
-‡ **Cost comparison between the Confluent rungs is withdrawn.** The two runs had
-different backlogs (44.4M vs 79.9M) and durations, and average drain rate
-includes ramp-up, so they differ 2.9x in CFU-minutes per million records
-(4.06 vs 1.41) while running at effectively the same compute. That is an
-artifact, not economics.
+**DataStream is roughly 2× faster than SQL here.** 146,300 vs 76,956 rec/s on
+identical hardware, load, delivery guarantee and query semantics. Well outside
+the noise band.
 
-**What survives:** both pools peaked at **10 CFU** — the cap-20 pool never used
-more than half its cap. Confluent bills consumption, not cap, so
-over-provisioning costs nothing there. Contrast AWS, which bills 20 provisioned
-slots whether or not ten of them can be assigned keys.
+**SQL performs the same on both clouds.** AWS SQL's 76,956 rec/s sits inside
+Confluent's measured range. No evidence of a platform difference in SQL
+throughput — the language is the constraint, not the vendor.
 
-**Why salting does not fan out on Confluent.** The generator keys prices by
-`symbol` and `prices` is `DISTRIBUTED BY HASH(key) INTO 48 BUCKETS`, so ten
-symbols occupy at most ten buckets and the source reads ~10-way regardless of
-bucket or CFU count. Query-time salting widens the conflation *operator* to 80
-keys but runs **after** the source read — a downstream `PARTITION BY` cannot
-widen a source. Fanning out for real requires salting at **write** time so
-records physically spread across buckets. AWS gained 2.66x from the same
-"too late" salt only because `keyBy` forces a network shuffle that redistributes
-the expensive work across all 20 subtasks.
+**Conflating before the narrow stage is worth 2.66×.** Salted 982s vs unsalted
+2,613s, one variable changed. The price feed funnels through ten ticker-keyed
+workers; cutting volume *before* that narrowing is the largest single tuning win
+in this project — bigger than any config knob.
 
-### What a "slot" is, and where they idle
+---
 
-A **slot** is one parallel instance of an operator. `parallelism=20` runs 20
-copies of each operator, and **Flink assigns each key to exactly one copy**. A
-stage with 10 distinct keys can only ever busy 10 copies; the other 10 idle
-regardless of queue depth. Slots are bought per KPU, so idle slots are paid for.
+## Scaling
 
-The "hot-stage slots" column above covers only the widest-throughput stage (the
-price conflation, on the raw 10,000/s feed). The full picture per stage:
+**This workload saturates at ~10-way parallelism and cannot use more.**
 
-| Stage | Key | Distinct keys | Slots usable of 20 |
+A Confluent pool capped at 20 CFU was measured drawing **7.64 CFU average, 10
+maximum** — it never touched half its cap, because ten tickers cap usable
+parallelism at ten.
+
+Two ceilings had to be removed before this could be measured honestly:
+
+1. **Bucket count** — tables built with 6 buckets cap a source at 6 readers
+   however many CFUs exist. Raised to 48.
+2. **Key concentration** — the producer keys prices by symbol, so ten symbols
+   occupy at most ten partitions whatever the topic width. Query-side salting
+   cannot fix this: a downstream `PARTITION BY` runs *after* the source read.
+   Fixing it needs salting at **write** time (parked on
+   `parked/price-key-salting`, untested).
+
+Removing the first revealed the second. **Scaling here is bounded by key
+cardinality, not by either platform.**
+
+---
+
+## Cost
+
+| | AWS | Confluent |
+|---|---|---|
+| Compute | $0.66/hr (6 billed KPU) | $1.60–2.02/hr (7.6–9.6 CFU measured) |
+| Kafka base | $0.75/hr | eCKU — *not measured* |
+| Partitions (288) | $0.43/hr | **free** |
+| **Known total** | **$1.84/hr** | ≥$1.60/hr *(incomplete)* |
+
+**64% of the AWS bill is Kafka, not Flink.** Every pipeline tuning change in
+this project moved the smaller half of the invoice.
+
+**Partitions are a cost knob on AWS and free on Confluent.** Reaching full
+utilisation means buying partition-hours on MSK; the same change is free on
+Confluent's eCKU model. Any TCO that prices compute but not the partitions
+needed to keep compute busy understates AWS.
+
+*Confluent's total is incomplete — its eCKU cluster charge was never captured,
+so no cross-platform cost claim is made.*
+
+---
+
+## Where the platforms genuinely differ
+
+Throughput is where they are most alike. These are the real differences.
+
+### Output cadence: expressible on AWS, impossible on Confluent
+
+A plain business requirement — *do not update a number faster than a human can
+read it* (positions ≤1 update/key/500ms, market values ≤1/key/1000ms) — is one
+connector option on AWS SQL (`sink.buffer-flush.interval`) and **cannot be
+expressed in Confluent SQL at all.** Confluent rejects the option, and its
+supported-options list contains no sink buffering or cadence control. The
+CUMULATE workaround starves the outputs (p50 158–235s).
+
+Verified on AWS DataStream under full saturation: 45.3 updates/s across 50 keys
+against a 1/key/s cap.
+
+### Diagnostics: Confluent tells you, MSF does not
+
+Confluent names expensive query shapes in its console —
+`UPSERT_AND_PRIMARY_KEYS_DIFFERENT`, `HIGH_STATE_OPERATOR_WITHOUT_TTL` — with
+doc links and a warning that they cost CFUs. MSF runs the same
+`SinkUpsertMaterializer` silently; it was found only by reading an execution
+plan and spotting an operator moving 219k records/sec.
+
+Both platforms had the same defect. Only one said so.
+
+### Robustness: DataStream cannot fail the way SQL did
+
+An event-time `TUMBLE` over partitions that never receive data never fires. With
+ten tickers across 48 partitions, 38 sit permanently idle — and both SQL
+implementations consumed at full speed while writing **zero rows**, reporting
+`RUNNING` with no error. Fixed with a source idle timeout, now defaulted in both.
+
+The DataStream job uses `noWatermarks()` and processing-time timers and is
+structurally immune. That is an argument for it independent of speed.
+
+### Metrics retention shapes how you can experiment
+
+CloudWatch retains metrics ~15 months and stays queryable after teardown — the
+entire AWS utilisation analysis was rebuilt post-destroy. Confluent telemetry
+returns `403` once the pool is deleted. There, **teardown closes the measurement
+window**, so utilisation must be captured during the run.
+
+---
+
+## Utilisation and waste
+
+| Configuration | rec/s | CPU | Hot-stage slots |
+|---|---|---|---|
+| DataStream salted | 146,300 | 76.3% | 20/20 |
+| SQL (AWS) | 76,956 | 66.5% | 20/20 |
+| DataStream unsalted | 53,600 | 63.1% | **10/20** |
+
+A **slot** is one parallel operator instance. Flink gives each key to exactly
+one slot, so a 10-key stage busies 10 slots and the rest idle regardless of
+queue depth.
+
+| Stage | Key | Keys | Slots usable of 20 |
 |---|---|---|---|
 | dedup | `trade_id` | millions | 20/20 |
 | position by account+ticker | `account\|ticker` | 50 | 20/20 |
-| **price conflation — salted** | `symbol\|salt` | **80** | **20/20** |
-| **price conflation — unsalted** | `symbol` | **10** | **10/20** |
-| mv by account+ticker | `ticker` | **10** | **10/20** |
-| mv by ticker | `ticker` | **10** | **10/20** |
+| price conflation — **salted** | `symbol\|salt` | **80** | **20/20** |
+| price conflation — unsalted | `symbol` | 10 | 10/20 |
+| mv by account+ticker | `ticker` | 10 | **10/20** |
+| mv by ticker | `ticker` | 10 | **10/20** |
 
-**The market-value stages run at 10/20 in EVERY config, salted or not.** Salting
-cannot widen them — there are only ten tickers. What it widens is the
-conflation stage sitting on the raw price feed, from 10 keys to 80, and that
-alone is worth 2.66x. Half the slots on the MV stages are permanently idle in
-all measured configs; that is the workload's shape, not a tuning failure.
+**The market-value stages run at 10/20 in every configuration.** Salting cannot
+widen them; what it widens is the conflation stage on the raw feed.
 
-This is also why operator busy-time averaged ~1% while the busiest subtask hit
-100%: slots that can never be assigned a key report zero busy for ever.
-* **Operator busy-time averages ~1% while CPU sits at 63–76%.** The gap is
-  framework overhead — serialization, network, checkpointing, GC — plus severe
-  skew: the busiest subtask hit 100% (`busyTimeMsPerSecond` Maximum = 1000)
-  while the average across subtasks stayed near 1%. A few workers saturated,
-  most idle. That spread *is* the ten-ticker key space showing up in the
-  telemetry.
-* **Scaling Confluent made cost-efficiency worse.** cap-10 → cap-20 buys 1.5x
-  throughput for 2x the compute ceiling, so cost per record rises ~33%.
-  "It scales" and "it scales economically" are different claims.
+**Threading.** At `ParallelismPerKPU=4`, 20 slots sit on 5 vCPUs, and each slot
+carries one thread per unchained task — roughly 10, including the exactly-once
+committers. That is ~40 threads per core. Idle slots park rather than burn CPU,
+so the 63–76% CPU reading is contention and framework overhead, not operator
+work: operator busy-time averages ~1% while the busiest subtask hits 100%.
 
-Confluent: Basic/eCKU cluster, Flink compute billed per CFU-minute while running.
+**Who pays for idle capacity:** AWS bills 20 provisioned slots whether or not
+ten can be assigned keys. Confluent bills CFU-minutes consumed — the cap-20 pool
+simply declined to draw compute it could not use.
 
-## The five findings
+---
 
-### 1. Salting is worth 2.66x on DataStream — and I predicted the opposite
+## What changed
 
-Salted 982s vs unsalted 2613s, same seed procedure, one variable changed.
+Earlier numbers in this repository were measured against ceilings built into the
+test rig. They are retired, not merely dated.
 
-I argued salting would be *net overhead* on DataStream because it adds a keyed
-shuffle plus per-key state and timers, and because the job "did not have
-Confluent's key-starvation problem". It has exactly that problem: four of six
-`keyBy` stages sit on ten tickers and the whole price feed funnels through them.
-Conflating *before* the narrowing is the entire game, and it is worth more here
-(+176%) than on Confluent (+85%). **Test a tuning on each platform; do not
-reason about whether a win transfers.**
+| Retired claim | Why | Now |
+|---|---|---|
+| AWS 435k rec/s | predates exactly-once and CR-1; different parallelism | 146,300 rec/s |
+| "Confluent saturates: +8% for +60% compute" | measured at 6 buckets — added CFUs had nothing to read | right conclusion, wrong reason: the *workload* caps at ~10-way |
+| "SQL is 2.69× slower" | that SQL run was stalled and wrote nothing | ~1.9×, output verified |
+| "Confluent scales 1.50× for 2× CFUs" | compared runs with different backlogs; ramp-up penalises the smaller | no scaling — the pool never exceeded 10 CFU |
+| AWS ~$1.09/hr | omitted the MSK Serverless base charge | $1.84/hr |
 
-### 2. Confluent scales 1.50x for 2x CFUs — the old verdict was our own ceiling
+**Method rules that produced these corrections**, worth keeping:
 
-| Rung | Rate |
-|---|---|
-| cap-10 | 52,779 rec/s |
-| cap-20 | 78,980 rec/s |
+* **Verify output, not just input.** Cells were originally validated on records
+  consumed, backpressure, restarts and checkpoints — and never on records
+  *written*. A pipeline that reads fast and writes nothing scores beautifully.
+* **Compare rates, not drain times**, unless backlogs are identical: average
+  drain rate includes ramp-up, which penalises smaller backlogs.
+* **Audit utilisation before trusting a number**
+  (`scripts/utilization_audit.py`): partitions ≥ parallelism, key cardinality ≥
+  parallelism per stage.
+* **Size backlogs against the drain rate**, not the clock:
+  `seed > rate × (blind_spot + plateau)`.
+* **Capture metrics during the run** where teardown destroys them.
 
-This **replaces** the earlier "10 → 16 CFUs = +8%, the CFU dial saturates"
-finding. That was measured against **6-bucket tables**, and a Flink source
-cannot use more subtasks than the topic has partitions — so added CFUs had
-nothing to read. Confluent was never given the chance to scale.
-
-The 25% shortfall from linear is a **workload** ceiling, not a vendor one: the
-salted conflation parallelises across 80 shard keys and does scale, while the
-downstream market-value stages stay pinned at ten tickers. Any Flink deployment
-anywhere would hit this with a ten-key workload.
-
-Backlogs differed between rungs, so **rates were compared, not drain times** —
-cap-20 took *longer* in wall-clock (807s vs 695s) while being substantially
-faster per second. Comparing times would have inverted the conclusion.
-
-### 3. Idle partitions stall event-time watermarks — self-inflicted, and it cost a result
-
-Ten tickers hashed into 48 buckets leaves **38 buckets permanently empty**. An
-empty partition never advances its watermark, so the event-time `TUMBLE` never
-fires. Symptom: statement `RUNNING`, consuming 119k/s, writing **zero rows**,
-for an hour, with no error and no DEGRADED.
-
-Raising buckets to remove the source-parallelism ceiling is what created this.
-`partitions >= parallelism` is only half the rule; the other half is
-`partitions <= key cardinality, or set an idle timeout`.
-
-Fix verified: `sql.tables.scan.idle-timeout=5000` (OSS/AWS:
-`table.exec.source.idle-timeout`). Output appeared on all four sinks at once.
-
-**DataStream is structurally immune** — `noWatermarks()` and processing-time
-timers throughout. That is a robustness argument for the DataStream formulation
-independent of speed.
-
-### 4. CR-1 is not expressible in Confluent SQL
-
-AWS SQL implements the cadence cap with the upsert-kafka
-`sink.buffer-flush.interval`. Confluent **rejects the option**; its own
-supported-options list contains no sink buffering or cadence control at all.
-The CUMULATE workaround was tried and starved the outputs (p50 158–235s).
-
-A plain business requirement — *don't update a number faster than a human can
-read it* — is one connector option on one platform and currently impossible on
-the other. Report it as a **capability** row, never as a speed row.
-
-### 5. Partitions: a cost knob on AWS, free on Confluent
-
-The cluster is Basic on the eCKU model, which has **no per-partition charge**.
-288 partitions (48 x 6 topics) cost **$0** there and **~$0.43/hr (~$315/mo)** on
-MSK. On AWS, using your compute efficiently costs extra money — any TCO
-comparison that prices compute but not the partitions needed to keep that
-compute busy is understating AWS.
-
-Related: Confluent **names** query-shape problems in its console
-(`UPSERT_AND_PRIMARY_KEYS_DIFFERENT`) with a doc link and a warning that they
-cost CFUs. MSF does the same expensive thing silently — the
-`SinkUpsertMaterializer` was only found by reading an execution plan.
-
-### 6. The stalled run understated SQL by 41% — and the tidy pattern was coincidence
-
-Re-running SQL (AWS) with `table.exec.source.idle-timeout=5000`, everything else
-identical, moved sink output from **nothing** to **26,872 rec/s** and throughput
-from 54,400 to **76,956 rec/s**. The first attempt was reading a backlog and
-discarding it into windows that never fired.
-
-Two conclusions change:
-
-* **DataStream is 1.90x faster than SQL**, not the 2.69x reported from the
-  stalled run.
-* **SQL is near-identical across clouds**: AWS 76,956/s vs Confluent cap-20
-  79,000/s — within 3%, both output-verified. That is the platform-independence
-  claim, now on sound footing.
-
-The earlier "three-way convergence" (Confluent 52.8k, AWS SQL 54.4k, unsalted
-DataStream 53.6k) read as evidence of a shared architectural ceiling. It was
-coincidence: one of the three was measuring something else entirely. **A pattern
-that explains itself neatly across independent measurements deserves more
-scrutiny, not less.**
-
-## What is still outstanding
-* **Trade/price mix differs slightly** between clouds (1.0% vs 0.42% trades)
-  because in-cloud amplification copies only `prices`. Prices are the expensive
-  path, so this mildly flatters Confluent.
-* **README, deck and article** still carry retired numbers (435k/s AWS; "+8%,
-  Confluent saturates"). They need one coherent rewrite, not per-cell patches.
-
-## Method notes that changed results
-
-* **Size the backlog against the drain rate**, not the clock:
-  `seed > rate x (blind_spot + plateau)`. Two seeds were discarded for being
-  drained in seconds.
-* **Verify the output side.** Every cell was validated on inputs — consumed,
-  backpressure, restarts, checkpoints — and none on outputs. A pipeline that
-  reads fast and writes nothing scores beautifully.
-* **Health-gate before measuring.** One full drain returned plausible zeros from
-  a crash-looping job (`RUNNING`, 100% busy, no backpressure, no FAILED).
-  Preserved as `docs/evidence/phase16/02_drain_all_zeros_crashloop.log`.
-* **`transaction.timeout.ms` is a correctness requirement of exactly-once**, not
-  tuning: Flink defaults to 1 hour, MSK caps at 15 minutes, and the mismatch
-  restart-loops silently. Now a terraform variable default.
+Raw artefacts: [`docs/evidence/phase16/`](evidence/phase16/) — the CFU
+measurements, the CloudWatch export, and a complete drain log reporting
+`0.0 records/sec` from a job that looked healthy on every other signal.

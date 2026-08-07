@@ -15,16 +15,22 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 |---|---|
 | **1,000 orders/sec, latency unchanged** | p50 96 ms at 1000/s vs 100 ms at 10/s; ~5% CPU, zero backpressure ([results](docs/PERF_RESULTS.md)) |
 | **Extreme prices can't hurt the order path** | $10¹³ price at 1000/s: identical throughput, MV exact to 19 digits |
-| **Linear scaling, config-only** | parallelism 1→2 = 2.0× measured at saturation; rescale is one property |
 | **Provably correct** | 18 unit tests + independent recompute of every output from raw topics: 6/6 checks pass ([how](VALIDATION.md)) |
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
-| **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency ([Phase 7](docs/PERF_RESULTS.md)) |
-| **Scaling proven on AWS** | 2× compute units → 2.0× throughput, measured at saturation with all tuning applied; rescale is one Terraform variable ([ladder](docs/PERF_RESULTS.md)) |
-| **Rock-steady under sustained load** | 28 min at 232,705 msgs/s live: standard deviation **30 msgs/s**, zero restarts; survives snapshot-restore with 198,313 outputs re-verified exact |
+| **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency |
 | **Built twice, on two clouds, judged by one test suite** | Same pipeline re-implemented in ~200 lines of Flink SQL on Confluent Cloud — same 5 checks pass, exact to the cent ([Confluent edition](docs/CONFLUENT_RUNBOOK.md)) |
-| **Measured head-to-head, deployable configs only** | AWS: p50 **267 ms**, 435k msgs/s full pipeline, ~$2.39/hr. Confluent SQL written for latency: p50 **1.8 s**, ~$3.36/hr — a tenth of the code, nothing to deploy ([full scoreboard](docs/PERF_RESULTS.md#final-scoreboard)) |
-| **How you write the SQL is worth 15×** | The same logic as 6 chained statements vs one fused `STATEMENT SET`: p50 26.7 s → **1.8 s**, p99 55 s → **2.1 s**. Most of the "language gap" was a translation choice ([Phase 12](docs/PERF_RESULTS.md)) |
-| **A product requirement found the real gap** | CR-1 caps outputs at human reading speed (positions ≤2/sec, market values ≤1/sec). AWS: a config change — 0.96/key/sec measured, p50 604 ms, 53,001 values re-verified exact. Confluent: **not expressible** for updating aggregations — mini-batch unsupported, `CUMULATE` opens 172,800 windows/key, both `TUMBLE` routes rejected ([Phase 13](docs/PERF_RESULTS.md)) |
+| **DataStream is ~2× faster than SQL** | 146,300 vs 76,956 rec/s, identical hardware, load, delivery guarantee and query text ([results](docs/PHASE16_RESULTS.md)) |
+| **SQL performs the same on both clouds** | AWS SQL 76,956 rec/s sits inside Confluent's measured range — the language is the constraint, not the vendor |
+| **Conflating before a narrow stage is worth 2.66×** | The price feed funnels through ten ticker-keyed workers; cutting volume before that narrowing beat every config knob |
+| **A product requirement found the real gap** | Capping output at human reading speed is one connector option on AWS SQL and **not expressible in Confluent SQL at all** — verified under saturation on AWS at 45.3 updates/s across 50 keys |
+| **Confluent names expensive queries; MSF does not** | Both platforms inserted the same state-heavy correction operator. Confluent flagged it in the console with a doc link; on MSF it was found only by reading an execution plan |
+| **Scaling is bounded by the workload, not the platform** | Ten tickers cap usable parallelism at ten: a pool allowed 20 CFU drew a measured maximum of 10 |
+| **64% of the AWS bill is Kafka, not Flink** | $1.84/hr = $0.66 compute + $0.75 MSK base + $0.43 partitions. Partitions are billed on AWS and free on Confluent |
+
+> **Numbers:** [`docs/PHASE16_RESULTS.md`](docs/PHASE16_RESULTS.md) supersedes all
+> earlier performance figures in this repo. Every result there was
+> output-verified; several earlier claims were measured against ceilings built
+> into the test rig and are retired.
 
 ## Architecture
 

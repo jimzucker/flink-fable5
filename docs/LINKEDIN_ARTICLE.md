@@ -46,62 +46,90 @@ run and be measured before we moved on. In production, those same problems
 would have been incidents. All of it is in the repo: the plan, the code,
 the tests, the results, and all eight prompts.
 
-**The epilogue: I rebuilt it on a second cloud, then spent three days
-learning to measure it honestly.** One prompt asked whether the whole thing
-could run on Confluent Cloud instead. Their managed Flink speaks SQL, not
-Java, so the pipeline became 200 lines of SQL instead of 2,000 lines of
-Java — and the same validation suite, unchanged, proved it correct to the
-cent. That part took an afternoon and $4.
+**The epilogue: I rebuilt it on a second cloud, then spent days learning to
+measure it honestly.** One prompt asked whether the whole thing could run on
+Confluent Cloud instead. Their managed Flink speaks SQL, not Java, so the
+pipeline became 200 lines of SQL instead of 2,000 lines of Java — and the same
+validation suite, unchanged, proved it correct to the cent. That took an
+afternoon and $4.
 
-Benchmarking the two fairly took far longer, because every early number I
-published was wrong in a way I had to be shown. I compared one system's
-cruising speed against the other's sprint. I quoted compute cost and
-ignored the rest of the bill. I cited a configuration nobody could actually
-deploy. And the worst one: I reported SQL as 124× slower on latency, when
-what I had really measured was my own translation — I had written one SQL
-statement per Java operator, so every stage handed off through a Kafka
-topic. Rewritten as a single job, the identical logic went from 26.7 seconds
-to **1.8**, and the worst case from 55 seconds to **2.1**.
+Benchmarking the two fairly took far longer, because most of the numbers I
+published first were wrong, and each one was wrong in a way I had to be shown.
+I compared one system's cruising speed against the other's sprint. I quoted
+compute cost and ignored the rest of the bill. I reported SQL as 124× slower
+when what I had measured was my own translation — one SQL statement per Java
+operator, so every stage handed off through a Kafka topic. Rewritten as a
+single job, the identical logic went from 26.7 seconds to 1.8.
 
-So the real gap is about seven times, not a hundred — and even that isn't
-really about SQL. The Java version writes each result the instant it is
-computed; the SQL version holds results and publishes them together at its
-next safety checkpoint, a couple of seconds apart. That is a
-safety-versus-speed setting, and I had them set differently on each side
-without noticing. I never re-ran them matched, so I can say it explains most
-of the remaining gap, not that I proved it.
+**The worst one looked perfect.** A run finished, reported a clean throughput
+number, and I wrote it down. The pipeline had been reading 119,000 records a
+second and writing *nothing at all* — for an hour. Status: running. No errors.
+CPU busy. Every dashboard green. The cause was mine: I had widened the topics
+to 48 partitions to remove a bottleneck, but the data only has ten symbols, so
+38 partitions sat permanently empty — and this kind of pipeline waits for
+*every* partition before it will release a result. It waited forever.
 
-**Then a product requirement settled it better than any benchmark had.**
-A number on a screen takes 300–500 milliseconds to read, so anything
-updating faster is unreadable shimmer — cost with negative value. I capped
-the outputs accordingly: positions at most twice a second, market values
-once. On the Java side that was a configuration change, and it measured
-exactly as designed: 0.96 updates per key per second against a ceiling of
-one, median latency 604 milliseconds, and 53,001 values re-checked to the
-cent. On the SQL side I could not express it at all. The idiomatic
-mechanism isn't exposed on that platform; the windowing alternative opened
-172,800 windows per key and starved the outputs to a fraction of the rate I
-was trying to allow; two further routes were rejected outright.
+I had checked, on every single test, that records were going *in*. I had never
+once checked that records were coming *out*.
 
-I had spent three days arguing about how fast each one was. What actually
-decided it was whether either could do what the product asked.
+That one mistake had quietly corrupted a headline comparison. Fixing it moved
+SQL's throughput up 41%.
 
-**So: DataStream where latency or control matter — and it's cheaper too.
-SQL where a couple of seconds is fine and speed-to-build wins, provided you
-write it as one fused job rather than a chain of statements, which is a 15×
-mistake hiding in plain sight.** Both produced identical results, every time.
+**What survived, after re-running everything with the output checked:**
 
-The lesson I'd keep isn't about either product. **Benchmarks mostly measure
-the person running them** — and sometimes they measure the wrong thing
-entirely. Mine only became trustworthy because a reviewer kept asking what
-else was different, and because a test suite that re-derives truth from raw
-data made every re-measurement cheap enough to bother with.
+Writing it in Java is about twice as fast as writing it in SQL — same hardware,
+same load, same guarantees, same logic. That gap is real and it held up.
+
+SQL runs at the same speed on both clouds. When the two SQL numbers landed
+within 3% of each other, the honest reading wasn't "one is faster" — it was
+"the language is what costs you, not the vendor."
+
+**And the thing I was most confident about was backwards.** I argued that a
+particular optimisation would slow the Java version down, and reasoned it
+through carefully. I tested it anyway, and it made it 2.66× faster. Same
+optimisation, opposite of my prediction. The measurement took twenty minutes;
+the argument would have shipped a version a third as fast.
+
+**Then there was the scaling claim I got to be wrong about twice.** I had
+published that one platform "doesn't scale." Then I found the ceiling was
+something I'd built into my own test rig, corrected it publicly, and published
+a scaling number instead. Then I measured what the machine actually *drew* —
+and it never used more than half of what it was allowed. There was no scaling
+either way. The real limit was that the business problem has ten symbols in it,
+and you cannot spread ten things across twenty workers. Neither platform was
+ever the constraint.
+
+**And the cheapest lesson in the project: 64% of the cloud bill wasn't the part
+I spent weeks tuning.** It was Kafka — the base charge and the per-partition
+fee. All that pipeline optimisation was working on the smaller half of the
+invoice.
+
+**So: Java where latency or control matter. SQL where a couple of seconds is
+fine and speed-to-build wins — provided you write it as one job, not a chain of
+statements, which is a 15× mistake hiding in plain sight.** Both produced
+identical results, every time.
+
+But the thing that actually decided it wasn't speed at all. A number on a screen
+takes 300–500 milliseconds to read, so anything faster is unreadable flicker —
+cost with negative value. I capped the outputs accordingly. In Java it was a
+configuration change that measured exactly as designed. In SQL on that platform
+I could not express it at all: the mechanism isn't offered, and the workaround
+starved the outputs to a fraction of the rate I was trying to allow.
+
+Days of arguing about speed. What settled it was whether either one could do
+what the product asked.
+
+**The lesson I'd keep isn't about either product. Benchmarks mostly measure the
+person running them.** Mine only became trustworthy when I stopped asking "how
+fast is it" and started asking "was every part of this actually doing work, and
+did anything come out the other end?" Three published conclusions did not
+survive that question.
 
 **github.com/jimzucker/flink-fable5**
 
-*One day — 5.7 active hours, 2.6 of them me reviewing and steering.
-8 engineering prompts out of 83 messages. 394M tokens of AI (≈$515
-metered — flat-rate in practice). $5 of AWS. 300M price updates absorbed
-by one well-placed window. Plus a Sunday afternoon and $4 for the
-Confluent second opinion. Every number above traceable to a measurement
-in the repo.*
+*One day to build — 5.7 active hours, 2.6 of them me reviewing and steering,
+8 engineering prompts out of 83 messages. Then several more days learning to
+measure it: a second cloud, four full re-runs, and three published conclusions
+withdrawn. ~$5 of AWS for the build, a few dollars more for the benchmarking,
+$4 for the Confluent second opinion. Every number above traceable to a
+measurement in the repo — including the ones that replaced earlier numbers.*
