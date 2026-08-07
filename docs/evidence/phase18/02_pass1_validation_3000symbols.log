@@ -1,0 +1,16 @@
+=== produced ===
+trades=11050 (dups=537) prices=110500
+=== quiescing ===
+=== validating ===
+
+streamed: trades=11,250 prices=112,500 symbols=2,973 conflated=0
+published: position=7,641  position=2,906  mv=7,559  mv=2,872
+
+  [PASS] dedup: 549 duplicates seen, 10,701 unique of 11,250
+  [PASS] positions by account+ticker reproducible: 7,641 keys checked, 0 mismatched
+  [PASS] positions by ticker reproducible: 2,906 keys checked, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 2,906 tickers rolled up, 0 disagree
+  [PASS] MV by account == position x FINAL price: 7,559 checked, 0 wrong
+  [PASS] MV by ticker == position x FINAL price: 2,872 checked, 0 wrong
+
+VALIDATION PASSED — all six checks

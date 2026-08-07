@@ -250,6 +250,20 @@ def main():
               f"join saw, but not the newest price. With --generator.price.cents.override "
               f"this must be ZERO, since every price is identical.")
 
+    # COMPLETENESS, reported explicitly: a position exists the moment a trade
+    # lands, but its market value also needs a price for that symbol to have
+    # arrived and been conflated. Tail symbols on a Zipf curve get few ticks, so
+    # some positions legitimately have no MV yet. Those keys are SKIPPED by the
+    # MV checks above -- and "skipped" is not "correct", so say so.
+    for pos_t, mv_t in (("position-by-account-ticker", "mv-by-account-ticker"),
+                        ("position-by-ticker", "mv-by-ticker")):
+        missing = len(out[pos_t]) - len(out[mv_t])
+        if missing > 0:
+            pct = 100.0 * missing / max(1, len(out[pos_t]))
+            print(f"  [INFO] coverage: {missing:,} of {len(out[pos_t]):,} {pos_t} keys "
+                  f"({pct:.1f}%) have no market value yet — no price seen for that symbol. "
+                  f"Not counted as pass or fail.")
+
     print()
     if FAILS:
         print(f"VALIDATION FAILED: {', '.join(FAILS)}")
