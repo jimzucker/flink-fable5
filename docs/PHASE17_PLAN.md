@@ -207,3 +207,41 @@ case — identical to the digit, because the generator's own rate limit was
 binding rather than Kafka. **When two conditions that should differ return the
 same number, suspect the harness.** Third instance this project of a plausible
 number measuring the configuration rather than the system.
+
+## Consumer side — the skew hurts processing too, and keying helps there as well
+
+| Key mode | Consumed | Window | Rate | CFU avg |
+|---|---|---|---|---|
+| `symbol` | 19,834,565 | 942s | **21,056 rec/s** | 9.36 |
+| `adaptive` | 39,721,866 | 823s | **48,265 rec/s** | 8.71 |
+
+**2.29x more throughput on fewer CFUs.** So write-time keying helps at BOTH
+ends: 2.7x at ingest and ~2.3x through the pipeline.
+
+**Caveat, stated because the run was not as clean as intended.** The adaptive
+run consumed 39.7M against a 19.26M seed: the previous symbol-keyed backlog was
+never purged, so it drained a 50/50 mix of symbol- and adaptive-keyed records
+from earliest. That cuts both ways — the larger backlog reduces ramp-up as a
+share of the window and inflates the average (the artifact that invalidated the
+Phase 16 scaling claim), while half the records it processed were the *slow*
+symbol-keyed case, which suppresses it. Correcting roughly for a ~3-minute ramp
+still leaves ~2.4x. Direction and magnitude hold; the run is not publication
+clean. **Drop the tables between runs.**
+
+### What this refines about conflation
+
+Conflation protects what is DOWNSTREAM of it — `mv-by-ticker` receives one tick
+per symbol per window regardless of skew, exactly as designed. It cannot protect
+what is UPSTREAM: the source read, JSON parsing, and the conflation's own
+phase-1 dedup all see the raw 90%-on-one-key distribution, and that is where the
+processing loss lives.
+
+**The complete answer to a hot ticker is therefore three-part:**
+
+1. **Spread at the key** (adaptive) — clears the leader-broker, consumer and
+   Flink-key ceilings, all of which derive from partition assignment.
+2. **Conflate before the narrow stage** — bounds `mv-by-ticker`'s input so the
+   irreducible one-worker stage never sees the flood.
+3. Neither alone suffices: spreading without conflation moves the pileup
+   downstream; conflation without spreading leaves ingest at 293k/s and
+   processing at 21k/s.

@@ -27,17 +27,17 @@ WITH deduped AS (
 -- matches the sink PRIMARY KEY. account/ticker are constant within a group,
 -- so MAX() over them is an identity, not an aggregation.
 SELECT
-  acct_key,
+  COALESCE(acct_key, '?'),
   JSON_OBJECT('account' VALUE account, 'ticker' VALUE ticker,
               'net_qty' VALUE net_qty, 'as_of' VALUE as_of)
 FROM (
-  SELECT CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')) AS acct_key,
+  SELECT COALESCE(CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')), '?') AS acct_key,
          MAX(JSON_VALUE(`val`, '$.account')) AS account,
          MAX(JSON_VALUE(`val`, '$.ticker')) AS ticker,
          SUM(CAST(JSON_VALUE(`val`, '$.qty') AS BIGINT)) AS net_qty,
          MAX(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT)) AS as_of
   FROM deduped
-  GROUP BY CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker'))
+  GROUP BY COALESCE(CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')), '?')
 );
 
 INSERT INTO `position-by-ticker`
@@ -50,7 +50,7 @@ WITH deduped AS (
   ) WHERE rn = 1
 )
 SELECT
-  ticker,
+  COALESCE(ticker, '?'),
   JSON_OBJECT('ticker' VALUE ticker, 'net_qty' VALUE net_qty, 'as_of' VALUE as_of)
 FROM (
   SELECT JSON_VALUE(`val`, '$.ticker') AS ticker,
@@ -123,20 +123,20 @@ latest_price AS (
 -- concatenated key so the sink's single-column PRIMARY KEY matches the
 -- upsert key the planner derives, and the correction operator disappears.
 SELECT
-  p.acct_key,
+  COALESCE(p.acct_key, '?'),
   JSON_OBJECT('account' VALUE p.account, 'ticker' VALUE p.ticker,
               'net_qty' VALUE p.net_qty,
               'price' VALUE CAST(lp.price AS STRING),
               'mv' VALUE CAST(CAST(p.net_qty AS DECIMAL(18, 0)) * lp.price AS STRING),
               'as_of' VALUE GREATEST(p.as_of, lp.event_time))
 FROM (
-  SELECT CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')) AS acct_key,
+  SELECT COALESCE(CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')), '?') AS acct_key,
          MAX(JSON_VALUE(`val`, '$.account')) AS account,
          MAX(JSON_VALUE(`val`, '$.ticker')) AS ticker,
          SUM(CAST(JSON_VALUE(`val`, '$.qty') AS BIGINT)) AS net_qty,
          MAX(CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT)) AS as_of
   FROM deduped
-  GROUP BY CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker'))
+  GROUP BY COALESCE(CONCAT(JSON_VALUE(`val`, '$.account'), '|', JSON_VALUE(`val`, '$.ticker')), '?')
 ) p
 JOIN latest_price lp ON p.ticker = lp.symbol;
 
@@ -200,7 +200,7 @@ latest_price AS (
   ) WHERE rn = 1
 )
 SELECT
-  p.ticker,
+  COALESCE(p.ticker, '?'),
   JSON_OBJECT('ticker' VALUE p.ticker, 'net_qty' VALUE p.net_qty,
               'price' VALUE CAST(lp.price AS STRING),
               'mv' VALUE CAST(CAST(p.net_qty AS DECIMAL(18, 0)) * lp.price AS STRING),
