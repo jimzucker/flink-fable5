@@ -36,12 +36,29 @@ went at the smaller half of the invoice.
 | **DataStream salted** | 146,300 | 76.3 | 20/20 | **79,425** |
 | SQL (AWS) verified | 76,956 | 66.5 | 20/20 | 41,779 |
 | DataStream unsalted | 53,600 | 63.1 | **10/20** | 29,099 |
-| SQL (Confluent) cap-10 | 52,800 | n/a | n/a | n/a | 25,143 † |
-| SQL (Confluent) cap-20 | 79,000 | n/a | n/a | n/a | **18,810** † |
+| SQL (Confluent) cap-10 | 39,426 | n/a | n/a | 9.61 CFU (cap 10) | withdrawn ‡ |
+| SQL (Confluent) cap-20 | 90,567 | n/a | n/a | **7.64 CFU (cap 20, max 10)** | withdrawn ‡ |
 
-† Confluent figures are the pool **ceiling** cost (max_cfu x $0.21). Actual
-CFU-minutes were not captured before the pools were deleted — a real gap, and
-if the pools ran below cap the true efficiency is better than shown.
+‡ **Cost comparison between the Confluent rungs is withdrawn.** The two runs had
+different backlogs (44.4M vs 79.9M) and durations, and average drain rate
+includes ramp-up, so they differ 2.9x in CFU-minutes per million records
+(4.06 vs 1.41) while running at effectively the same compute. That is an
+artifact, not economics.
+
+**What survives:** both pools peaked at **10 CFU** — the cap-20 pool never used
+more than half its cap. Confluent bills consumption, not cap, so
+over-provisioning costs nothing there. Contrast AWS, which bills 20 provisioned
+slots whether or not ten of them can be assigned keys.
+
+**Why salting does not fan out on Confluent.** The generator keys prices by
+`symbol` and `prices` is `DISTRIBUTED BY HASH(key) INTO 48 BUCKETS`, so ten
+symbols occupy at most ten buckets and the source reads ~10-way regardless of
+bucket or CFU count. Query-time salting widens the conflation *operator* to 80
+keys but runs **after** the source read — a downstream `PARTITION BY` cannot
+widen a source. Fanning out for real requires salting at **write** time so
+records physically spread across buckets. AWS gained 2.66x from the same
+"too late" salt only because `keyBy` forces a network shuffle that redistributes
+the expensive work across all 20 subtasks.
 
 ### What a "slot" is, and where they idle
 

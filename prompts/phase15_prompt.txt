@@ -569,3 +569,37 @@ COST EFFICIENCY, now measured rather than ceiling:
   cap-20  56,449 rec/s per $/hr  ($1.60/hr at 7.64 CFU)
 Both are contaminated by the same ramp-up artifact, so treat them as bounds and
 compare only same-backlog runs.
+
+WHY SALTING DOES NOT FAN OUT ON CONFLUENT — IT IS TOO LATE
+--------------------------------------------------------------------------
+The generator writes price.symbol as the Kafka key (DataGenerator.java:185)
+and `prices` is DISTRIBUTED BY HASH(`key`) INTO 48 BUCKETS. Ten symbols hash
+into AT MOST 10 buckets; 38+ are permanently empty (the same fact that stalled
+the watermarks).
+
+=> The SOURCE can only read ~10-way no matter how many buckets or CFUs exist.
+   Query-time salting widens the CONFLATION OPERATOR to 80 keys but runs AFTER
+   the source read. A downstream PARTITION BY cannot widen a source.
+
+FIX (untested): salt at WRITE time -- producer keys records `symbol|salt` so
+they physically spread across all 48 buckets, then reduce back to `symbol` in
+the query. That is a producer change, not a query change.
+
+WHY AWS STILL GAINED 2.66x FROM THE SAME "TOO LATE" SALT: LocalPriceConflator's
+keyBy forces a NETWORK SHUFFLE, redistributing records across all 20 subtasks
+regardless of arrival partition. The source stays 10-way but the expensive
+parse/conflate work fans out. Confluent's planner did not turn the salted CTE
+into equivalent extra parallelism -- the pool settled at <=10 CFU.
+
+WITHDRAW THE cap-10 vs cap-20 COST COMPARISON
+--------------------------------------------------------------------------
+  cap-10  44.4M / 1127s, 9.61 CFU avg -> 4.06 CFU-min per million records
+  cap-20  79.9M /  882s, 7.64 CFU avg -> 1.41 CFU-min per million records
+Two runs of the SAME workload at effectively the SAME compute (both peaked at
+10 CFU) differ 2.9x in cost per record. That is the ramp-up + backlog-size
+artifact, not economics. The rec/s-per-$ figures for these rungs are NOT
+comparable and are withdrawn.
+
+WHAT SURVIVES: both pools peaked at 10 CFU, so cap-20 bought nothing; and
+because Confluent bills consumption rather than cap, over-provisioning the cap
+costs nothing. That is the defensible utilisation finding.
