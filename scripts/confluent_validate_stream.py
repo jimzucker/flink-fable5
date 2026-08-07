@@ -201,28 +201,54 @@ def main():
     check("completeness sum(accounts)==ticker", not badc,
           f"{len(rolled):,} tickers rolled up, {len(badc)} disagree")
 
-    def mv_bad(topic, keyfn):
-        out_bad = []
+    def mv_bad(topic, keyfn, posmap, prices):
+        """MV must equal the RECOMPUTED position x the price. Uses our own
+        position, never the published one, so a wrong position cannot cancel a
+        wrong price and still look correct."""
+        strict, stale = [], []
         for k, v in out[topic].items():
             sym = keyfn(k)
-            tp = truth_price.get(sym)
-            if tp is None:
+            expect_qty = posmap.get(k)
+            if expect_qty is None:
                 continue
-            expect = Decimal(int(v.get("net_qty", 0))) * tp[1]
+            raw = prices.get(sym)
+            if raw is None:
+                continue
             got = Decimal(str(v.get("mv", "0")))
-            if expect != got:
-                out_bad.append((k, str(got), str(expect)))
-        return out_bad
+            if Decimal(expect_qty) * raw[1] == got:
+                continue
+            # not the final raw price — is it explained by conflation lag?
+            cp = conflated.get(sym)
+            if cp is not None and Decimal(expect_qty) * cp[1] == got:
+                stale.append((k, str(raw[1]), str(cp[1])))
+            else:
+                strict.append((k, str(got), str(Decimal(expect_qty) * raw[1])))
+        return strict, stale
 
-    b1 = mv_bad("mv-by-account-ticker", lambda k: k.split("|")[1] if k and "|" in k else k)
-    check("MV by account == position x conflated price", not b1,
-          f"{len(out['mv-by-account-ticker']):,} checked, {len(b1)} mismatched"
+    # PRIMARY assertion: final MV == recomputed position x FINAL RAW price.
+    # Checking against the pipeline's own conflated topic would be partly
+    # circular -- if conflation were wrong, truth and pipeline would share the
+    # error and the check would pass. Conflation lag is reported separately so a
+    # known semantic difference is never silently counted as correctness.
+    b1, s1 = mv_bad("mv-by-account-ticker",
+                    lambda k: k.split("|")[1] if k and "|" in k else k,
+                    pos_acct, latest_price)
+    check("MV by account == position x FINAL price", not b1,
+          f"{len(out['mv-by-account-ticker']):,} checked, {len(b1)} wrong"
+          + (f", {len(s1)} explained by conflation lag" if s1 else "")
           + (f" e.g. {b1[0]}" if b1 else ""))
 
-    b2 = mv_bad("mv-by-ticker", lambda k: k)
-    check("MV by ticker == position x conflated price", not b2,
-          f"{len(out['mv-by-ticker']):,} checked, {len(b2)} mismatched"
+    b2, s2 = mv_bad("mv-by-ticker", lambda k: k, pos_ticker, latest_price)
+    check("MV by ticker == position x FINAL price", not b2,
+          f"{len(out['mv-by-ticker']):,} checked, {len(b2)} wrong"
+          + (f", {len(s2)} explained by conflation lag" if s2 else "")
           + (f" e.g. {b2[0]}" if b2 else ""))
+
+    if s1 or s2:
+        print(f"  [WARN] conflation lag: {len(s1)+len(s2)} market values priced at the "
+              f"last CONFLATED tick rather than the final raw tick. Exact given what the "
+              f"join saw, but not the newest price. With --generator.price.cents.override "
+              f"this must be ZERO, since every price is identical.")
 
     print()
     if FAILS:
