@@ -18,7 +18,28 @@ and the backlog grows on the one symbol anyone actually cares about that day.
 worker per key" looks like healthy parallelism. It is only a problem when the
 distribution is real.
 
-## Where the hotspot actually binds
+## The partition is a ceiling on BOTH sides
+
+`key = symbol` sends every record for a symbol to one partition, and a partition
+has a single leader broker. That caps the symbol twice over:
+
+* **Write side.** Every producer instance writing that symbol queues behind the
+  same leader. Running more producers buys nothing for the hot name — they
+  contend rather than scale. An IPO saturates ingest before Flink is even
+  involved.
+* **Read side.** One partition is read by exactly one consumer. No amount of
+  parallelism, salting downstream, or CFUs changes that.
+
+**Evidence already in the Phase 16 data, misread at the time.** Twelve generator
+tasks produced ~7M prices each in 20 minutes; a single task earlier managed
+~11.7M in the same window. That was recorded as vague "MSK-side contention". It
+is almost certainly twelve producers contending for ~ten occupied partitions —
+the write ceiling, visible in our own measurements.
+
+So the fan-out has to happen at the **key**, which is upstream of both ceilings.
+Nothing downstream of the partition assignment can undo it.
+
+## Where the hotspot binds, stage by stage
 
 Working outward from the data:
 
@@ -68,7 +89,13 @@ upsert-key fix and salted CTE, `sql.tables.scan.idle-timeout` set.
 | A | uniform (baseline) | `symbol` | re-establish the baseline on this env |
 | B | **90% one ticker** | `symbol` | how far does throughput collapse? |
 | C | **90% one ticker** | **salted** | does write-time salting restore it? |
-| D | **Confluent end-to-end latency** | — | never measured on the corrected config |
+| D | **90% one ticker** | **adaptive** | does salting only the hot name suffice? |
+| E | **Confluent end-to-end latency** | — | never measured on the corrected config |
+
+**Measure PRODUCER throughput as well as drain throughput.** The write ceiling
+is half the problem and every previous run measured only the read side. Record
+producer records/sec for each case; if B shows producers throttled relative to
+A, that is the IPO failure mode reproduced at ingest.
 
 Latency matters here because it is the one lens where SQL was previously
 reported as far behind (p50 1.8 s vs 267 ms on AWS DataStream), and that

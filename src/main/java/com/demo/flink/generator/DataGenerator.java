@@ -246,4 +246,36 @@ public final class DataGenerator {
         }
         return symbol;
     }
+
+    /**
+     * Adaptive key: salt ONLY the symbols that are actually hot.
+     *
+     * Salting every symbol works but is heavier than necessary in production —
+     * it spreads quiet names across partitions that gain nothing, and it gives
+     * up per-symbol ordering and log-compaction behaviour for the whole topic
+     * rather than for the one name that needs it. Real feeds are Pareto: on any
+     * given day a handful of symbols carry the tape and the rest are quiet.
+     *
+     * A symbol is "hot" once its share of recent ticks exceeds `hotFactor` times
+     * an even share. Hot symbols fan out across `width` partitions; everything
+     * else keeps a bare symbol key.
+     *
+     * Safe because this pipeline is order-independent by construction:
+     * conflation selects MAX by event_time and dedup keys on trade_id, so
+     * neither depends on a symbol's records sharing a partition or arriving in
+     * order. The validation suite is the proof — it re-derives every output from
+     * the raw topics and must pass unchanged.
+     */
+    static String adaptiveKey(String symbol, long symbolCount, long totalCount,
+                              int numSymbols, double hotFactor, int width, long seq) {
+        if (totalCount < 1000) {
+            return symbol; // too early to judge; do not disturb the steady state
+        }
+        double evenShare = 1.0 / Math.max(1, numSymbols);
+        double share = (double) symbolCount / totalCount;
+        if (share > evenShare * hotFactor) {
+            return symbol + "#" + (seq % width);
+        }
+        return symbol;
+    }
 }
