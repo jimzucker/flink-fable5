@@ -31,11 +31,11 @@ session** — that figure omitted the MSK Serverless cluster base.
 **64% of the AWS bill is Kafka, not Flink.** Every tuning effort in this project
 went at the smaller half of the invoice.
 
-| Config | rec/s | CPU% | Usable slots | Idle | rec/s per $/hr |
-|---|---|---|---|---|---|
-| **DataStream salted** | 146,300 | 76.3 | 20/20 | 0% | **79,425** |
-| SQL (AWS) verified | 76,956 | 66.5 | 20/20 | 0% | 41,779 |
-| DataStream unsalted | 53,600 | 63.1 | **10/20** | **50%** | 29,099 |
+| Config | rec/s | CPU% | Hot-stage slots | rec/s per $/hr |
+|---|---|---|---|---|
+| **DataStream salted** | 146,300 | 76.3 | 20/20 | **79,425** |
+| SQL (AWS) verified | 76,956 | 66.5 | 20/20 | 41,779 |
+| DataStream unsalted | 53,600 | 63.1 | **10/20** | 29,099 |
 | SQL (Confluent) cap-10 | 52,800 | n/a | n/a | n/a | 25,143 † |
 | SQL (Confluent) cap-20 | 79,000 | n/a | n/a | n/a | **18,810** † |
 
@@ -43,12 +43,33 @@ went at the smaller half of the invoice.
 CFU-minutes were not captured before the pools were deleted — a real gap, and
 if the pools ran below cap the true efficiency is better than shown.
 
-**Where capacity is actually wasted:**
+### What a "slot" is, and where they idle
 
-* **Unsalted DataStream pays for 20 slots and can use 10.** Ten tickers means
-  ten workers on the narrow stages; 50% of purchased parallelism is
-  structurally unreachable. This is the clearest "paying for nothing" case in
-  the set, and salting is what recovers it.
+A **slot** is one parallel instance of an operator. `parallelism=20` runs 20
+copies of each operator, and **Flink assigns each key to exactly one copy**. A
+stage with 10 distinct keys can only ever busy 10 copies; the other 10 idle
+regardless of queue depth. Slots are bought per KPU, so idle slots are paid for.
+
+The "hot-stage slots" column above covers only the widest-throughput stage (the
+price conflation, on the raw 10,000/s feed). The full picture per stage:
+
+| Stage | Key | Distinct keys | Slots usable of 20 |
+|---|---|---|---|
+| dedup | `trade_id` | millions | 20/20 |
+| position by account+ticker | `account\|ticker` | 50 | 20/20 |
+| **price conflation — salted** | `symbol\|salt` | **80** | **20/20** |
+| **price conflation — unsalted** | `symbol` | **10** | **10/20** |
+| mv by account+ticker | `ticker` | **10** | **10/20** |
+| mv by ticker | `ticker` | **10** | **10/20** |
+
+**The market-value stages run at 10/20 in EVERY config, salted or not.** Salting
+cannot widen them — there are only ten tickers. What it widens is the
+conflation stage sitting on the raw price feed, from 10 keys to 80, and that
+alone is worth 2.66x. Half the slots on the MV stages are permanently idle in
+all measured configs; that is the workload's shape, not a tuning failure.
+
+This is also why operator busy-time averaged ~1% while the busiest subtask hit
+100%: slots that can never be assigned a key report zero busy for ever.
 * **Operator busy-time averages ~1% while CPU sits at 63–76%.** The gap is
   framework overhead — serialization, network, checkpointing, GC — plus severe
   skew: the busiest subtask hit 100% (`busyTimeMsPerSecond` Maximum = 1000)
