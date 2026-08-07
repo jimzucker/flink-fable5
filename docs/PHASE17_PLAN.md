@@ -317,3 +317,45 @@ cannot widen a stage whose key space is the business domain.
 adaptive keying makes the tape *land*; it does not make the pipeline *process*
 it faster. Surviving an IPO needs both the keying fix AND enough compute for a
 processing stage that remains ten-way parallel.
+
+---
+
+# PHASE 17 CLOSE
+
+## What this phase proved
+
+| Finding | Status |
+|---|---|
+| A hot ticker costs **66% of ingest** (873k → 293k/s) | measured |
+| **Adaptive keying recovers it: 2.7×** (293k → 789k/s) | measured |
+| Adaptive **beats blanket salting** *and* keeps ordering for cold symbols | measured |
+| Keying does **nothing** for processing (23,807 vs 23,603 rec/s) | measured, clean runs |
+| The partition caps **producers** too, not just consumers | measured |
+| Phase 16's "MSK contention" anomaly was this same ceiling | explained |
+
+## Confluent traps found
+
+* Round-robin distribution is **unavailable** on keyed-format tables —
+  declaring `key.format` forces `DISTRIBUTED BY`.
+* Recreating Kafka topics **out-of-band destroys Flink table schemas**;
+  Confluent re-infers `BYTES` and every INSERT then fails on type mismatch.
+* Primary-key columns must be **NOT NULL** — `JSON_VALUE` is nullable, so
+  `CONCAT` over it is too. `COALESCE` pins it.
+* Statement names must be **lowercase** `[a-z0-9-]`.
+* Deleting service accounts on a retry breaks an in-flight terraform apply
+  (they are org-scoped and survive environment deletion).
+
+## What this phase did NOT do — and it is the reason for Phase 18
+
+**No correctness validation ran.** Not once, in this phase or Phase 16. Every
+throughput number here is unvalidated. Changes shipped that carry real
+correctness risk and were argued safe rather than proven: `idle-timeout` forcing
+watermarks past idle partitions, salted keys spreading a symbol across
+partitions, `GROUP BY CONCAT`, `COALESCE` on primary keys.
+
+**The dataset was also unrealistic.** Ten uniformly-loaded tickers made key
+starvation the dominant effect in nearly every result. US equities are
+~8,000–11,000 symbols on a Pareto curve.
+
+**Scaling remains unproven**, and is now newly testable: the pool drew only
+4–6 CFU of an allowed 10, so it declined compute it already had.
