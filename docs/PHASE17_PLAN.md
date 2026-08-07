@@ -245,3 +245,39 @@ processing loss lives.
 3. Neither alone suffices: spreading without conflation moves the pileup
    downstream; conflation without spreading leaves ingest at 293k/s and
    processing at 21k/s.
+
+## OPEN: does the fixed pipeline scale?
+
+**Not proven.** The hot-key fix is measured at a single size (cap-10). Whether
+the corrected pipeline scales with compute is untested — and it is newly
+testable for a reason worth spelling out.
+
+Phase 16 concluded "this workload saturates at ~10 CFU". That measurement had
+**two confounded causes, both equal to ten**:
+
+| Candidate cause | Value |
+|---|---|
+| Ticker cardinality → Flink key-groups | 10 |
+| Occupied partitions (symbol-keyed) → source readers | ~10 |
+
+The ceiling was attributed to key cardinality. But symbol-keyed data occupied
+only ~10 of 48 partitions, so the source was pinned at 10 as well. The two could
+not be separated.
+
+**Adaptive keying breaks the tie.** Data now spreads across all 48 partitions,
+so the source can read 48-way while the ticker-keyed stages downstream stay at
+10. Running the adaptive config at cap-10 and cap-20 therefore answers a
+question that was previously unanswerable:
+
+* **Scales past 10 CFU** → the Phase 16 ceiling was partly partition
+  concentration, and "the workload caps at ten" needs revising again.
+* **Stays at 10 CFU** → key cardinality is genuinely the binding limit and the
+  ten-ticker conclusion stands on its own.
+
+**Method requirements**, learned expensively in Phase 16:
+* Compare **rates**, and give both rungs the **same backlog size** — the 1.50x
+  scaling claim died because cap-20 drained a larger backlog and average rate
+  includes ramp-up.
+* Sample **CFU during the run**; the pool declining to draw compute it cannot
+  use is the actual evidence, and telemetry dies with the pool.
+* Purge tables between runs.
