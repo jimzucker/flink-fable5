@@ -40,8 +40,6 @@ public final class DataGenerator {
         String bootstrap = params.get("kafka.bootstrap.servers", "localhost:29092");
         String tradesTopic = params.get("topic.trades", "trades");
         String pricesTopic = params.get("topic.prices", "prices");
-        // "symbol" (default, unchanged) or "salted" — see the send() call below.
-        String priceKeyMode = params.get("generator.price.key.mode", "symbol");
         int tradesPerSec = params.getInt("generator.trades.per.sec", 10);
         int pricesPerSec = params.getInt("generator.prices.per.sec", 20);
         int numAccounts = params.getInt("generator.accounts", 5);
@@ -184,23 +182,7 @@ public final class DataGenerator {
                             .toPlainString();
                     Price price = new Price(tickers[idx], priceStr, System.currentTimeMillis());
                     String json = JsonUtil.toJson(price);
-                    // Price record key. Kafka's default partitioner hashes the KEY, so
-                    // keying by symbol puts a 10-symbol feed into at most 10 partitions
-                    // however many the topic has. That single fact caused both of the
-                    // worst problems in this project:
-                    //   * the Flink source could only read ~10-way regardless of
-                    //     partition or CFU count, so query-side salting could not help
-                    //     (a downstream PARTITION BY cannot widen a source), and a
-                    //     Confluent pool capped at 20 CFU never drew more than 10;
-                    //   * the empty partitions never advanced a watermark, so an
-                    //     event-time TUMBLE never fired and the job consumed 119k
-                    //     records/sec while writing zero rows.
-                    // The key is not needed for correctness: every downstream query
-                    // reads the symbol out of the VALUE, never the key. "salted"
-                    // spreads records across all partitions so the source can read
-                    // wide. Default stays "symbol" so existing runs are unchanged.
-                    producer.send(new ProducerRecord<>(pricesTopic,
-                            priceKey(priceKeyMode, price.symbol, pricesSent), json));
+                    producer.send(new ProducerRecord<>(pricesTopic, price.symbol, json));
                     pricesSent++;
                     bytesSent += json.length();
                 }
@@ -218,22 +200,5 @@ public final class DataGenerator {
                 }
             }
         }
-    }
-
-    /**
-     * Partition-spreading key for price records.
-     *
-     * Kafka's default partitioner hashes the key, so a 10-symbol feed keyed by
-     * symbol occupies at most 10 partitions no matter how wide the topic is.
-     * "salted" appends a rotating suffix so records spread across every
-     * partition, letting a Flink source read wide and keeping every partition
-     * non-idle (idle partitions stall event-time watermarks). Downstream
-     * queries read the symbol from the value, so the key is free to change.
-     */
-    static String priceKey(String mode, String symbol, long seq) {
-        if ("salted".equalsIgnoreCase(mode)) {
-            return symbol + "#" + (seq & 0x3F); // 64 buckets, >= any partition count used here
-        }
-        return symbol;
     }
 }
