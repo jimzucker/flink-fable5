@@ -48,6 +48,24 @@ public final class DataGenerator {
         // only looks like parallelism when the keys are evenly loaded.
         // hot.share = fraction of price ticks forced onto generator.hot.ticker
         // (index into the ticker array). 0 disables, restoring a uniform feed.
+        // Volume distribution across symbols.
+        //
+        // A uniform feed is the least realistic thing a market-data benchmark can
+        // do: it makes every symbol equally busy, so "one worker per key" looks
+        // like parallelism and key starvation dominates every result. Real tape is
+        // Pareto — a small head carries most of the messages while thousands of
+        // names are quiet. Zipf is the discrete form: rank r gets weight 1/r^alpha.
+        //
+        //   distribution=zipf  alpha~1.0  -> top 10 ~ 20-30% of messages,
+        //                                    top 100 ~ 60-70%, long tail beyond
+        //   ipo.share=0.30                -> ONE symbol takes 30% of the tape on
+        //                                    top of the baseline curve, which is
+        //                                    the IPO / meme-squeeze day
+        String distribution = params.get("generator.distribution", "uniform");
+        double zipfAlpha = params.getDouble("generator.zipf.alpha", 1.0);
+        double ipoShare = params.getDouble("generator.ipo.share", 0.0);
+        int ipoIdx = params.getInt("generator.ipo.ticker", 0);
+        // legacy crude switch, kept so earlier runs stay reproducible
         double hotShare = params.getDouble("generator.hot.share", 0.0);
         int hotIdx = params.getInt("generator.hot.ticker", 0);
         // adaptive mode: a symbol is hot once its share exceeds hotFactor x an
@@ -79,7 +97,12 @@ public final class DataGenerator {
         String[] tickers = new String[numTickers];
         long[] priceCents = new long[numTickers];
         for (int i = 0; i < numTickers; i++) {
-            tickers[i] = TICKER_UNIVERSE[i];
+            // Real US equities are ~8,000-11,000 tradeable symbols. The hardcoded
+            // universe holds 30, so anything beyond it is synthesised. Symbol
+            // COUNT is what matters for key-space behaviour, not the names.
+            tickers[i] = i < TICKER_UNIVERSE.length
+                    ? TICKER_UNIVERSE[i]
+                    : String.format("SYM%04d", i);
             priceCents[i] = 1_000 + random.nextInt(49_000); // $10.00 - $500.00
         }
 
@@ -141,6 +164,18 @@ public final class DataGenerator {
             }
         }
 
+        // Cumulative Zipf weights for O(log n) sampling across a wide universe.
+        double[] zipfCdf = new double[numTickers];
+        if ("zipf".equalsIgnoreCase(distribution)) {
+            double acc = 0;
+            for (int i = 0; i < numTickers; i++) {
+                acc += 1.0 / Math.pow(i + 1, zipfAlpha);
+                zipfCdf[i] = acc;
+            }
+            for (int i = 0; i < numTickers; i++) {
+                zipfCdf[i] /= acc;
+            }
+        }
         long[] symbolCounts = new long[numTickers];
         long tradeSeq = 0;
         long tradesSent = 0;
@@ -186,9 +221,17 @@ public final class DataGenerator {
                 }
 
                 for (int i = 0; i < pricesPerSec; i++) {
-                    int idx = (hotShare > 0 && random.nextDouble() < hotShare)
-                            ? Math.min(hotIdx, numTickers - 1)
-                            : random.nextInt(numTickers);
+                    int idx;
+                    double roll = random.nextDouble();
+                    if (ipoShare > 0 && roll < ipoShare) {
+                        idx = Math.min(ipoIdx, numTickers - 1);          // the hot listing
+                    } else if (hotShare > 0 && roll < hotShare) {
+                        idx = Math.min(hotIdx, numTickers - 1);          // legacy switch
+                    } else if ("zipf".equalsIgnoreCase(distribution)) {
+                        idx = zipfPick(zipfCdf, random.nextDouble());    // Pareto baseline
+                    } else {
+                        idx = random.nextInt(numTickers);                // uniform
+                    }
                     if (priceCentsOverride > 0) {
                         priceCents[idx] = priceCentsOverride; // Case 2: extreme price, config only
                     } else {
@@ -250,6 +293,16 @@ public final class DataGenerator {
      * non-idle (idle partitions stall event-time watermarks). Downstream
      * queries read the symbol from the value, so the key is free to change.
      */
+    /** Binary search a cumulative Zipf table: rank r has weight 1/r^alpha. */
+    static int zipfPick(double[] cdf, double u) {
+        int lo = 0, hi = cdf.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (cdf[mid] < u) { lo = mid + 1; } else { hi = mid; }
+        }
+        return lo;
+    }
+
     static String priceKey(String mode, String symbol, long seq) {
         if ("salted".equalsIgnoreCase(mode)) {
             return symbol + "#" + (seq & 0x3F); // 64 buckets, >= any partition count used here
