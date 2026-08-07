@@ -13,8 +13,9 @@ ceilings built into the test rig.
 | **DataStream (AWS), salted** | 143.68M / 982s | **~146,300 rec/s** | structurally immune |
 | SQL (Confluent), cap-20 | 63.74M / 807s | ~79,000 rec/s | yes |
 | SQL (Confluent), cap-10 | 36.68M / 695s | ~52,800 rec/s | yes |
+| **SQL (AWS)** | 84.11M / 1093s | **~76,956 rec/s** | yes |
 | DataStream (AWS), unsalted *(control)* | ~140M / 2613s | ~53,600 rec/s | structurally immune |
-| ~~SQL (AWS)~~ | ~144M / 2646s | ~~~54,400 rec/s~~ | **NO — withdrawn** |
+| ~~SQL (AWS), first attempt~~ | ~144M / 2646s | ~~~54,400 rec/s~~ | **NO — stalled, superseded** |
 
 AWS: parallelism 20, ~6 billed KPU, ~$1.09/hr including MSK partitions.
 Confluent: Basic/eCKU cluster, compute billed per CFU-minute only while running.
@@ -96,12 +97,28 @@ Related: Confluent **names** query-shape problems in its console
 cost CFUs. MSF does the same expensive thing silently — the
 `SinkUpsertMaterializer` was only found by reading an execution plan.
 
-## What is still outstanding
+### 6. The stalled run understated SQL by 41% — and the tidy pattern was coincidence
 
-* **Re-run SQL (AWS) with `table.exec.source.idle-timeout`.** Its output was
-  never verified and the dashboard showed an empty sink panel, so ~54,400 rec/s
-  may have measured reading rather than processing. Until then there is **no
-  sound DataStream-vs-SQL ratio** and no cross-cloud SQL claim.
+Re-running SQL (AWS) with `table.exec.source.idle-timeout=5000`, everything else
+identical, moved sink output from **nothing** to **26,872 rec/s** and throughput
+from 54,400 to **76,956 rec/s**. The first attempt was reading a backlog and
+discarding it into windows that never fired.
+
+Two conclusions change:
+
+* **DataStream is 1.90x faster than SQL**, not the 2.69x reported from the
+  stalled run.
+* **SQL is near-identical across clouds**: AWS 76,956/s vs Confluent cap-20
+  79,000/s — within 3%, both output-verified. That is the platform-independence
+  claim, now on sound footing.
+
+The earlier "three-way convergence" (Confluent 52.8k, AWS SQL 54.4k, unsalted
+DataStream 53.6k) read as evidence of a shared architectural ceiling. It was
+coincidence: one of the three was measuring something else entirely. **A pattern
+that explains itself neatly across independent measurements deserves more
+scrutiny, not less.**
+
+## What is still outstanding
 * **Trade/price mix differs slightly** between clouds (1.0% vs 0.42% trades)
   because in-cloud amplification copies only `prices`. Prices are the expensive
   path, so this mildly flatters Confluent.

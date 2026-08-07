@@ -1,0 +1,14 @@
+=== 1/5 start app ===
+RUNNING at 23:36:31Z
+=== 2/5 detect drain start ===
+DRAIN_START=23:41:08Z rate=6101.4
+=== 3/5 health gate (restarts must not climb) ===
+restarts stable 0.0->0.0
+=== 4/5 OUTPUT GATE — refuse to measure a pipeline that writes nothing ===
+  numRecordsOutPerSecond=26872.283333333333
+  OUTPUT CONFIRMED at 23:43:34Z
+=== 5/5 time drain to completion ===
+23:43:35Z in=14420.133333333333
+23:44:35Z in=14420.133333333333
+23:45:36Z in=15967.85
+23:46:37Z in=20057.916666666668

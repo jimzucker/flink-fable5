@@ -510,3 +510,22 @@ a ten-key workload. Report it as a WORKLOAD ceiling, not a vendor one.
 The honest headline is therefore NOT "Confluent scales sub-linearly". It is:
 "once the partition ceiling is removed, Confluent scales 1.5x for 2x compute on
 a workload whose own key space caps it at ten-way parallelism downstream."
+
+RERUN — SQL (AWS) WITH idle-timeout: THE STALL COST 41%
+--------------------------------------------------------------------------
+  84,112,800 records / 1093s = 76,956 rec/s   OUTPUT VERIFIED (26,872 rec/s
+  on numRecordsOutPerSecond; the first attempt's sink panel read
+  "No data available").
+
+  first attempt (stalled)  ~54,400 rec/s
+  rerun (verified)         ~76,956 rec/s     => the stall understated SQL 41%
+
+REVISED CONCLUSIONS:
+  DataStream 146,300 / SQL(AWS) 76,956 = 1.90x   (NOT the 2.69x reported)
+  SQL(AWS) 76,956 vs SQL(Confluent cap-20) 79,000 = within 3%, both verified
+    => SQL throughput really is near platform-independent here, but the
+       evidence for it is the CORRECTED pair, not the earlier coincidence.
+
+The earlier "three-way convergence at ~53k" was tidy and wrong -- one of the
+three numbers was measuring reading, not processing. A pattern that explains
+itself neatly across independent measurements deserves MORE scrutiny, not less.
