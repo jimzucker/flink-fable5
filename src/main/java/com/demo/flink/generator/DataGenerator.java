@@ -80,6 +80,14 @@ public final class DataGenerator {
         long seed = params.getLong("generator.seed", 42L);
         double duplicateRatio = params.getDouble("generator.duplicate.ratio", 0.05);
         long priceCentsOverride = params.getLong("generator.price.cents.override", -1L);
+        // Fixed trade quantity. Correctness checking is far easier when the
+        // arithmetic is trivial: with qty=1 and price=$1.00, a position is
+        // simply the count of deduped trades for that key, and market value
+        // equals that count in dollars. Any rounding, float creep, double-count
+        // or dropped record shows up as an off-by-N a human can see, instead of
+        // needing a second program to recompute 15,000 aggregates.
+        // -1 keeps the random +/-10..2000 quantities used for realistic load.
+        long qtyOverride = params.getLong("generator.qty.override", -1L);
         // Trade ids are namespaced per run so a restarted generator produces NEW
         // trades instead of replaying ids that dedup (correctly) absorbs.
         // Pin it in config for fully reproducible runs.
@@ -201,7 +209,9 @@ public final class DataGenerator {
                         duplicatesSent++;
                     } else {
                         tradeSeq++;
-                        long qty = (long) (random.nextInt(200) + 1) * 10 * (random.nextBoolean() ? 1 : -1);
+                        long qty = qtyOverride > 0
+                                ? qtyOverride
+                                : (long) (random.nextInt(200) + 1) * 10 * (random.nextBoolean() ? 1 : -1);
                         Trade trade = new Trade(
                                 String.format("T-%s-%08d", runId, tradeSeq),
                                 accounts.get(random.nextInt(accounts.size())),
