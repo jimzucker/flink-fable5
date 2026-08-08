@@ -1,0 +1,320 @@
+PHASE 16 — HONEST MEASUREMENT
+=============================
+Re-measured the DataStream/SQL/Confluent comparison after giving every cell the
+same tuning. Found that most published numbers were measuring the harness, not
+the platforms.
+
+CONFLUENT WARNS ABOUT THE SAME DEFECT AWS HIDES (user spotted in console)
+--------------------------------------------------------------------------
+Confluent flags dml-14-mv-by-account-ticker with:
+  UPSERT_AND_PRIMARY_KEYS_DIFFERENT — "The primary key does not match the
+  upsert key derived from the query ... the system needs to add a
+  state-intensive operation for correction."
+  HIGH_STATE_OPERATOR_WITHOUT_TTL — "potentially needs to store an infinite
+  amount of state ... can result in a DEGRADED statement and higher CFU
+  consumption."
+
+This is EXACTLY the AWS SinkUpsertMaterializer, same root cause: the sink PK
+is CONCAT(account,'|',ticker) but the GROUP BY is on (account, ticker), so
+the planner cannot prove the sink key derives from the grouping key and
+inserts a correction operator.
+
+THE DIFFERENCE IS OBSERVABILITY, and it favours Confluent:
+  Confluent  — named warning, in the console, with a doc link, and an
+               explicit statement that it costs CFUs.
+  AWS        — silent. Found only by reading the execution plan and noticing
+               a task named SinkMaterializer_24 moving 219k records/sec.
+Add to the matrix: Confluent surfaces query-shape problems that MSF hides.
+
+FIX (untested on either platform): group by the concatenation itself so the
+upsert key EQUALS the primary key —
+   GROUP BY CONCAT(account,'|',ticker)   instead of   GROUP BY account, ticker
+On AWS the equivalent (upsert-materialize=NONE) removed the operator
+entirely but bought only ~14%, so expect a modest gain, not a fix for the
+~19x throughput gap.
+
+TTL warning = the known SQL limitation: table.exec.state.ttl is JOB-WIDE, so
+it cannot be scoped to dedup the way the DataStream job scopes
+dedup.state.ttl.ms. Setting it would also expire the position aggregates and
+silently change the answers. Unresolved.
+
+GAP FOUND BY USER: THE AWS PIPELINE IS NOT SALTED
+--------------------------------------------------------------------------
+Question: "does the AWS test apply the same salted tuning?"  Answer: NO.
+
+grep for salt|localAgg|two-phase|preAgg across src/main/java => ZERO hits.
+The six AWS keyBy stages (PositionPipeline.java:99-143):
+  :99   keyBy(p -> p.symbol)                  10 keys   NARROW  unsalted
+  :103  keyBy(t -> t.tradeId)                 millions  wide
+  :109  keyBy(t -> t.account + "|" + t.ticker) wide
+  :120  keyBy(t -> t.ticker)                  10 keys   NARROW  unsalted
+  :131  keyBy(p -> p.ticker)   <- MV by ACCOUNT+ticker  10 keys NARROW unsalted
+  :143  keyBy(p -> p.ticker)                  10 keys   NARROW  unsalted
+
+FOUR of six stages sit on a 10-value key space, including :131 — the heaviest
+output (market value by account+ticker) is keyed by TICKER ALONE because it
+has to join the broadcast-ish price stream. So the widest fan-out work in the
+job funnels through 10 keys. This is the SAME key-starvation structure that
+capped Confluent, and AWS never got the salting fix that Confluent got.
+
+WHICH DIRECTION THIS BIASES:
+  throughput / latency / cost — AWS won WITHOUT this tuning while Confluent
+    had it. So AWS's margin is UNDERSTATED. Those conclusions stand and are
+    conservative.
+  SCALING — biased the other way and NOT safe. We were about to judge
+    "once tuned, how does Confluent scale?" on a salted config while AWS's
+    linear-scaling proof (phase 10.3b) was measured UNSALTED. With four
+    stages pinned at 10 keys, AWS parallelism above ~10 cannot help those
+    operators, so the AWS linear-scaling claim needs re-examination: either
+    the ceiling was set elsewhere, or it holds only to about P=10.
+
+=> "most tuned version of each" is NOT yet true for AWS. To close it, apply
+   the same two-phase salt to the four narrow keyBy stages and re-run.
+
+CONFLUENT OPERATOR FEEDBACK — official fix confirmed
+--------------------------------------------------------------------------
+docs.confluent.io/cloud/current/flink/how-to-guides/resolve-common-query-problems.html
+  "Align the table's PRIMARY KEY with the columns that uniquely identify rows
+   in your query (typically your GROUP BY columns)."
+Our sinks are raw key/value topics so the PK must be the single `key` column;
+therefore the fix is to GROUP BY CONCAT(account,'|',ticker) rather than
+GROUP BY account, ticker. Unresolved warnings can drive a statement DEGRADED.
+
+RUN A (AWS DataStream, tuned) — SEED METHODOLOGY
+--------------------------------------------------------------------------
+Backlog sizing is not a wall-clock decision, it is an arithmetic one:
+
+    seed_records > drain_rate x (metric_blind_spot + plateau_needed)
+
+Two seeds were REJECTED before producing any number:
+  1. demo defaults (10 trades/s, 20 prices/s) -> ~14k records. Drains in about
+     a second; anything measured would have been startup noise.
+  2. one Fargate task at its 10,000/s target only achieved 5,683/s (CPU-bound)
+     -> 3.44M records = 10-17s of drain. CloudWatch is 1-min granularity with
+     a ~2-min blind spot after job start, so the drain would have ENDED before
+     the first usable datapoint existed.
+
+Fix is horizontal, not vertical: 12 generator tasks x 20 min. Once the work was
+spread each task hit ~9,700 prices/s (vs 5,683 alone), aggregate ~116k/s, for
+~140M prices + ~1.4M trades. At an expected 200-400k/s drain that is 6-11 min
+of draining -- outlasts the blind spot with room for a stable plateau.
+
+Config bugs caught by the audit//harness BEFORE any number was produced:
+  * Confluent 6 buckets vs 10/20/40 CFUs  -> would have read as "cannot scale"
+  * generator at demo rates               -> startup noise as throughput
+  * topics_recreate=true                  -> MSK ThrottlingQuotaExceeded, the
+                                             generator silently absent
+  * arm64 image on x86 Fargate            -> exec-format error, reads as an app bug
+  * audit's own ACCOUNTS=50 vs deployed 5 -> overstated cardinality 10x
+None of these are visible in a throughput number. That is the whole argument
+for auditing utilisation before trusting a measurement.
+
+RUN A RESULTS — AWS DataStream, tuned, exactly-once, P=20 (~6 billed KPU)
+--------------------------------------------------------------------------
+Method: drain a seeded backlog, time start->completion, rate = records/elapsed.
+Chosen over reading CloudWatch rates because MSF merges subtask series and the
+aggregation semantics are ambiguous; records/elapsed assumes nothing. The
+probe's x-parallelism scaling agreed within ~20%, which is the cross-check.
+
+  SALTED (price.salt.factor=8)   143.68M records / 982s   = ~148,000 rec/s
+  UNSALTED (price.salt.factor=1) ~140M records   / 2613s  = ~53,600 rec/s
+  => SALTING IS 2.66x FASTER ON AWS DATASTREAM (+176%)
+
+I PREDICTED THE OPPOSITE AND WAS WRONG. The reasoning was: salting adds a keyed
+shuffle plus per-key state and timers to the hot price path, and the DataStream
+job "does not have Confluent's key-starvation problem", so it should be net
+overhead. It DOES have that problem -- four of six keyBy stages sit on ten
+tickers and the entire price feed funnels through them. Conflating BEFORE the
+narrowing is the whole game, and it is worth more here (+176%) than on
+Confluent (+85%). Lesson: test the tuning on each platform; do not reason about
+whether a win transfers.
+
+Health/validity evidence for the salted run:
+  backpressure 92%      -> bottleneck is DOWNSTREAM of the source, so this is
+                           pipeline capacity, not how fast we could feed it
+  failed checkpoints 0
+  fullRestarts stable
+  mv_account_out 45.3/s -> CR-1 verified in production: 50 account|ticker keys
+                           capped at 1 update/key/sec, holding under saturation
+
+RETIRE THE OLD 435k/s AWS NUMBER until re-measured. It predates exactly-once
+and CR-1 and was taken at a different parallelism; it is not comparable to
+anything measured here.
+
+RUN B RESULTS — AWS SQL (same platform, same load: isolates LANGUAGE)
+--------------------------------------------------------------------------
+Identical everything except pipeline.mode: P=20, exactly-once, 48 partitions,
+salt factor 8, sql.price.conflate.ms=250 (matches Confluent's 0.25s TUMBLE),
+CR-1 OFF on both SQL cells (Confluent cannot express it, so capping only AWS
+would compare a capability gap as if it were a speed gap).
+
+  DataStream          143.68M / 982s   = ~146,300 rec/s
+  SQL (AWS)          ~144M   / 2646s   =  ~54,400 rec/s   => DataStream 2.69x
+  DataStream unsalted ~140M  / 2613s   =  ~53,600 rec/s   (control, for scale)
+
+SQL-on-AWS lands almost exactly where UNSALTED DataStream did (54.4k vs 53.6k).
+Two different handicaps converging on one ceiling points at the same root
+cause -- the ten-ticker narrow stages -- with SQL unable to exploit the salt as
+well as the hand-written operator does. Same salt, same key space, different
+payoff: the DataStream conflator drops a tick the moment a newer one arrives,
+whereas the SQL ROW_NUMBER dedup materialises the window before reducing it.
+
+RAMP MATTERS, AND PEAK THROUGHPUT HIDES IT: sustained rates were 29k (SQL) vs
+31-42k (DataStream) -- much closer than the 2.69x drain-time ratio -- because
+SQL took ~4 min to reach steady state against DataStream's ~1. Quote drain
+time, or quote peak AND ramp; peak alone flatters SQL.
+
+Cell validated as genuinely SQL three ways: pipeline.mode asserted pre-measure,
+salt/conflate properties present, and CloudWatch operator names were SQL plan
+operators (Deduplicate_19, Calc_20) rather than the DataStream UIDs. Note this
+also means aws_perf_probe.py's TaskOperator filters read ZERO in SQL mode --
+another reason records/elapsed is the primary measure.
+
+CRITICAL: IDLE PARTITIONS STALL EVENT-TIME WATERMARKS (self-inflicted)
+--------------------------------------------------------------------------
+SYMPTOM: Confluent statement set RUNNING for an hour, consuming `prices` at up
+to 7.15M/min (119k/s), writing ZERO rows to all four sinks. No error, no
+DEGRADED, phase stayed RUNNING.
+
+CAUSE: 10 tickers hashed into 48 buckets => at most 10 buckets ever carry data
+and 38 are PERMANENTLY EMPTY. An empty partition never advances its watermark,
+so the event-time TUMBLE never fires and no window ever closes. The job reads
+for ever and emits nothing.
+
+SELF-INFLICTED: raising buckets 6 -> 48 to remove the source-parallelism
+ceiling is what created this. The rule "partitions >= parallelism" is only half
+the story; the other half is that partitions ABOVE KEY CARDINALITY are dead
+weight AND actively dangerous on an event-time pipeline.
+
+FIX (verified): sql.tables.scan.idle-timeout=5000. Output appeared immediately
+on all four sinks. Confluent accepts the option.
+
+CONTAMINATES THE AWS SQL CELL: SQL-on-AWS ran the same event-time TUMBLE
+(sql.price.conflate.ms=250) against 48-partition topics with the same 10
+tickers. The CloudWatch dashboard captured at the time reads
+"Volume out - bytes/sec per sink: No data available". So the ~54,400 rec/s
+figure very likely measured READING, not end-to-end processing, and the
+"DataStream is 2.69x faster than SQL" claim is NOT SOUND until re-run with
+table.exec.source.idle-timeout set. I noticed the empty-sink panel, said I
+would check it, and published the number anyway.
+
+WHY DATASTREAM IS IMMUNE: it uses WatermarkStrategy.noWatermarks() and
+processing-time timers throughout, so idle partitions cannot stall it. Both
+DataStream numbers (salted ~146,300/s; unsalted control, 2.66x) stand.
+
+META-LESSON, and the expensive one: EVERY cell was validated on the INPUT side
+(records consumed, backpressure, restarts, checkpoints) and NEVER on the OUTPUT
+side. A pipeline that reads fast and writes nothing scores beautifully on a
+throughput metric. Assert non-zero SINK traffic before any drain number counts.
+
+RUN C RESULTS — Confluent SQL, cap-10, 48 buckets, salted, upsert-key fixed
+--------------------------------------------------------------------------
+  consumed 36,527,699 prices + 153,637 trades = 36.68M in 695s = ~52,800 rec/s
+  OUTPUT VERIFIED NON-ZERO: mv-by-account-ticker 2,016 / position-by-account-
+  ticker 426 / mv-by-ticker 402. Small by design -- the 250ms TUMBLE conflates
+  ticks and there are only 50 account|ticker keys, so a CORRECT pipeline emits
+  little. The test is non-zero, not large.
+
+THE CONVERGENCE WORTH EXPLAINING:
+  Confluent SQL (verified)      ~52,800/s
+  AWS SQL (output UNVERIFIED)   ~54,400/s
+  AWS DataStream UNSALTED       ~53,600/s
+  AWS DataStream SALTED        ~146,300/s
+Three configurations within 3% of each other and one 2.7x above them. The
+common factor in the slow three is that none of them gets parallel work past
+the ten-ticker narrowing: unsalted DataStream by construction, and BOTH SQL
+cells because the salted CTE does not buy what the hand-written conflator
+does. That the two SQL numbers land within 3% ACROSS CLOUDS is itself the
+finding -- SQL throughput here looks platform-independent, with the language
+(or rather what the planner will do with the salt) as the constraint.
+
+CAVEAT, stated because it changes the claim: the AWS SQL 54.4k has UNVERIFIED
+output. Its closeness to the verified Confluent number is weak evidence it was
+measuring real work, but it is not proof, and the AWS SQL cell must be re-run
+with table.exec.source.idle-timeout before "SQL is platform-independent" or any
+DataStream-vs-SQL ratio is published.
+
+SCALING VERDICT — OVERTURNS THE PUBLISHED CONCLUSION
+--------------------------------------------------------------------------
+  cap-10  36,681,336 consumed / 695s = 52,779 rec/s
+  cap-20  63,736,838 consumed / 807s = 78,980 rec/s
+  => 1.50x throughput for 2x CFUs (75% scaling efficiency)
+  Output verified non-zero on all four sinks at BOTH rungs.
+
+Backlogs differed (36.7M vs 63.7M) so RATES were compared, not drain times --
+cap-20 took LONGER in wall-clock (807s vs 695s) while being substantially
+faster per second. Comparing times here would have inverted the conclusion.
+
+WHAT THIS REPLACES: the earlier "10 -> 16 CFUs = +8%, the CFU dial saturates"
+finding. That was measured with 6-BUCKET tables, where a Flink source cannot
+use more than 6 subtasks however many CFUs are attached. Confluent was never
+given the chance to scale. At 48 buckets it returns +50% for 2x compute.
+
+WHY 1.50x AND NOT 2.0x -- and this is NOT a platform limit: four of six stages
+key on TEN TICKERS. The salted conflation parallelises across 80 shard keys and
+does scale; the downstream market-value stages stay pinned at ten and cannot
+absorb the extra CFUs. Any Flink deployment on any platform would hit this with
+a ten-key workload. Report it as a WORKLOAD ceiling, not a vendor one.
+
+The honest headline is therefore NOT "Confluent scales sub-linearly". It is:
+"once the partition ceiling is removed, Confluent scales 1.5x for 2x compute on
+a workload whose own key space caps it at ten-way parallelism downstream."
+
+RERUN — SQL (AWS) WITH idle-timeout: THE STALL COST 41%
+--------------------------------------------------------------------------
+  84,112,800 records / 1093s = 76,956 rec/s   OUTPUT VERIFIED (26,872 rec/s
+  on numRecordsOutPerSecond; the first attempt's sink panel read
+  "No data available").
+
+  first attempt (stalled)  ~54,400 rec/s
+  rerun (verified)         ~76,956 rec/s     => the stall understated SQL 41%
+
+REVISED CONCLUSIONS:
+  DataStream 146,300 / SQL(AWS) 76,956 = 1.90x   (NOT the 2.69x reported)
+  SQL(AWS) 76,956 vs SQL(Confluent cap-20) 79,000 = within 3%, both verified
+    => SQL throughput really is near platform-independent here, but the
+       evidence for it is the CORRECTED pair, not the earlier coincidence.
+
+The earlier "three-way convergence at ~53k" was tidy and wrong -- one of the
+three numbers was measuring reading, not processing. A pattern that explains
+itself neatly across independent measurements deserves MORE scrutiny, not less.
+
+GAP CLOSED — MEASURED CFU OVERTURNS THE SCALING VERDICT (AGAIN)
+--------------------------------------------------------------------------
+Redeployed Confluent purely to sample compute_pool_utilization/current_cfus
+DURING the drains, because the metrics API 403s once a pool is deleted.
+
+  cap-10  44,433,431 / 1127s = 39,426 rec/s  @ CFU avg 9.61, MAX 10 (cap 10)
+  cap-20  79,879,857 /  882s = 90,567 rec/s  @ CFU avg 7.64, MAX 10 (cap 20)
+
+THE CAP-20 POOL NEVER EXCEEDED 10 CFUs. It delivered 2.3x the throughput while
+consuming FEWER CFUs than cap-10. That is not scaling -- the extra compute was
+never touched.
+
+THE ARTIFACT I BUILT INTO BOTH SCALING EXPERIMENTS: average rate over a drain
+includes ramp-up, so a SMALLER backlog is penalised (startup is a larger share
+of its window). cap-20 had the bigger backlog in BOTH experiments (63.74M vs
+36.68M originally; 79.9M vs 44.4M here). The "scaling" was backlog size.
+
+=> WITHDRAW the "Confluent scales 1.50x for 2x CFUs" claim published earlier
+   today. The job cannot use more than ~10 CFUs because ten tickers cap usable
+   parallelism at ten. The ORIGINAL "+8%, the CFU dial saturates" finding was
+   RIGHT ABOUT THIS WORKLOAD; my correction of it was wrong.
+
+Two separate things were true at once and I conflated them:
+  * the 6-bucket ceiling WAS real and did confound the old runs (source could
+    not read past 6 subtasks);
+  * removing it did NOT unlock scaling, because the ten-ticker key space is a
+    lower ceiling still. Fixing the visible constraint revealed the binding one.
+
+RUN-TO-RUN VARIANCE IS ~25%, not the +-13% previously recorded: the same cap-10
+config measured 52,779 rec/s earlier and 39,426 rec/s here. Any single-run gap
+under ~25% is indistinguishable from noise -- which makes the cross-cloud SQL
+result (76,956 AWS vs 79,000 Confluent, 3% apart) properly read as "the same",
+and that is the stronger claim anyway.
+
+COST EFFICIENCY, now measured rather than ceiling:
+  cap-10  19,536 rec/s per $/hr  ($2.02/hr at 9.61 CFU)
+  cap-20  56,449 rec/s per $/hr  ($1.60/hr at 7.64 CFU)
+Both are contaminated by the same ramp-up artifact, so treat them as bounds and
+compare only same-backlog runs.
