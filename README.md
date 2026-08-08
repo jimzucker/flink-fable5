@@ -19,17 +19,17 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Duplicates handled** | keyed state + TTL; 959 injected duplicates in 20,210 trades — all dropped, verified |
 | **Price storms can't stall orders** | 10,000 ticks/s: conflated re-valuation does 240× less work, zero backpressure, flat order latency |
 | **Built twice, on two clouds, judged by one test suite** | Same pipeline re-implemented in ~200 lines of Flink SQL on Confluent Cloud — same 5 checks pass, exact to the cent ([Confluent edition](docs/CONFLUENT_RUNBOOK.md)) |
-| **DataStream is ~2× faster than SQL** | 146,300 vs 76,956 rec/s, identical hardware, load, delivery guarantee and query text ([results](docs/PHASE16_RESULTS.md)) |
-| **SQL performs the same on both clouds** | AWS SQL 76,956 rec/s sits inside Confluent's measured range — the language is the constraint, not the vendor |
+| **DataStream sustains 5.5× SQL** | Identical live load, market and metric on the same hardware: median 5,183/s vs 950/s. The gap **widens** with key count — ~2× at 30 symbols, ~5.5× at 3,000 ([results](docs/PHASE19_RESULTS.md)) |
+| **SQL can't be scaled by buying compute** | Doubling AWS parallelism gave +17% throughput (inside the ±25% noise band) for +83% cost; Confluent's autoscaler simply kept drawing 10 CFU whatever the pool allowed. DataStream converts extra hardware into throughput — this SQL does not |
 | **Conflating before a narrow stage is worth 2.66×** | The price feed funnels through ten ticker-keyed workers; cutting volume before that narrowing beat every config knob |
 | **A product requirement found the real gap** | Capping output at human reading speed is one connector option on AWS SQL and **not expressible in Confluent SQL at all** — verified under saturation on AWS at 45.3 updates/s across 50 keys |
 | **Confluent names expensive queries; MSF does not** | Both platforms inserted the same state-heavy correction operator. Confluent flagged it in the console with a doc link; on MSF it was found only by reading an execution plan |
-| **A single Confluent statement caps at ~10 CFU** | A pool allowed 20 CFU drew a measured max of 10, with ~3,000 keys available — so scale OUT (more statements over disjoint keys), not up ([results](docs/PHASE18_RESULTS.md)) |
+| **A single Confluent statement caps at ~10 CFU** | A pool allowed 20 CFU drew a measured max of 10, with ~3,000 keys available — so not key starvation. Mechanism unestablished; the decisive test (two concurrent statements on one pool) is unrun ([results](docs/PHASE18_RESULTS.md)) |
 | **Correctness proven, not assumed** | Six checks recompute every output from the raw topics with exact decimal arithmetic: dedup, both position aggregations, cross-aggregation completeness, and both market-value paths against the final raw price |
 | **A hot IPO costs two thirds of ingest** | 873k → 293k prices/s when one symbol takes 90% of the tape; adaptive write-time keying recovers it to 789k while quiet symbols keep per-symbol ordering |
 | **64% of the AWS bill is Kafka, not Flink** | $1.84/hr = $0.66 compute + $0.75 MSK base + $0.43 partitions. Partitions are billed on AWS and free on Confluent |
 
-> **Numbers:** [`docs/PHASE18_RESULTS.md`](docs/PHASE18_RESULTS.md) is current
+> **Numbers:** [`docs/PHASE19_RESULTS.md`](docs/PHASE19_RESULTS.md) is current
 > and supersedes all earlier performance figures. Everything there is gated on
 > correctness — six independent checks recomputed from the raw topics — and
 > measured on a realistic market (3,000 symbols, Pareto-distributed, one hot
