@@ -148,6 +148,38 @@ won't use more than about ten units of compute no matter how much you give it.
 Both of my confident corrections were wrong. You scale that system by running
 more queries, not by buying a bigger one.
 
+**Then I asked the question that actually matters if you run this for a
+living: when it starts falling behind, can you just buy your way out?**
+
+For the Java version, yes — double the workers, get roughly double the work.
+That's the whole promise of this kind of system.
+
+For the SQL version, no. On one cloud I doubled the compute and measured
+seventeen percent more throughput — for eighty-three percent more money. And
+seventeen percent is inside this system's normal run-to-run wobble, so the
+honest answer is closer to "nothing". I'd set the bar beforehand at sixty
+percent before I'd call it real, precisely so I couldn't talk myself into it
+afterwards.
+
+On the other cloud I couldn't even spend the money. I raised the ceiling from
+ten units to twenty, and the platform quietly kept drawing ten. It decided the
+query didn't need more, and there was no argument to be had.
+
+So: one cloud won't sell you the capacity, the other sells it, bills you, and
+delivers almost none of it. Arguably being prevented from spending is the better
+deal.
+
+**That reframed the whole comparison for me.** I'd been treating the Java-vs-SQL
+gap as a speed difference — Java is a few times faster per record. The bigger
+difference is that Java turns extra hardware into extra throughput and this SQL
+doesn't. Speed you can live with. Not being able to grow is a different kind of
+problem, and it's invisible if you only ever test at one size.
+
+The reason is unglamorous: extra workers only help if the work can be split
+among them. Parts of this query can't be — a given stock's numbers have to be
+added up in one place. So the new workers sit idle while the old ones do exactly
+what they did before.
+
 **Before any of that, though, I had to admit I'd never checked the answers.**
 Days of throughput numbers, and I had never once successfully run the test that
 verifies the output is actually correct. It had crashed the one time I tried,

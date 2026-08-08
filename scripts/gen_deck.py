@@ -327,6 +327,23 @@ bullets(s, [
     ("Keying fixes INGEST only. Surviving an IPO needs both: spread at the key AND conflate before the narrow stage", 0, DARK, True),
 ], y=5.4, size=14, gap=9)
 
+# ---------------- Slide 7g: Can you buy your way out? ----------------
+s = slide()
+title(s, "When it falls behind, can you buy your way out?", "Same load, same market, one variable: the compute knob doubled")
+table(s, [
+    ["", "Knob doubled", "Throughput gained", "Cost"],
+    ["DataStream (Java)", "parallelism", "converts extra hardware into throughput", "linear"],
+    ["SQL on AWS", "parallelism 20 -> 40", "+17% median - INSIDE the +/-25% noise band", "+83%"],
+    ["SQL on Confluent", "pool cap 10 -> 20", "0% - platform kept drawing 10 units", "n/a"],
+], 0.7, 2.0, 12.0, [3.0, 3.0, 4.5, 2.5], size=14)
+bullets(s, [
+    ("One cloud will not sell you the capacity; the other sells it, bills you, and delivers almost none of it", 0, ACCENT, True),
+    ("Threshold was set BEFORE the run: >=1.6x genuine, 1.2-1.6x partial, <1.2x none. Median landed at 1.17x", 0, DARK, False),
+    ("Extra workers only help if the work can be split - a stock's numbers must be added up in one place, so the new workers idle", 0, DARK, False),
+    ("The Java advantage is not mainly SPEED, it is that Java converts extra hardware into throughput and this SQL does not", 0, GREEN, True),
+    ("Speed you can live with. Not being able to grow is a different problem - and invisible if you only test at one size", 0, GREEN, True),
+], y=5.6, size=15, gap=9)
+
 # ---------------- Slide 8: Production path ----------------
 s = slide()
 title(s, "Path to production — AWS ready today", "Full infrastructure-as-code, validated; one command to deploy")
