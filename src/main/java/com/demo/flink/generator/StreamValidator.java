@@ -81,6 +81,14 @@ public final class StreamValidator {
         Map<String, Long> latestTs = new HashMap<>();
         Map<String, BigDecimal> pmin = new HashMap<>();
         Map<String, BigDecimal> pmax = new HashMap<>();
+        // Bounded staleness window. The old check accepted any implied price
+        // inside the symbol's WHOLE-RUN min/max, which with moving prices means
+        // any price the pipeline ever saw -- it cannot tell "250ms behind" from
+        // "minutes stale". Acceptable lag is a property of the conflation
+        // interval, not of how long the run happened to be, so keep only the
+        // ticks within lagMs of the newest one seen per symbol.
+        long lagMs = params.getLong("validate.lag.ms", 2000L);
+        Map<String, java.util.ArrayDeque<Object[]>> recent = new HashMap<>();
         long[] priceCount = {0};
 
         drain(props, params.get("topic.prices", "prices"), idleMs, (k, v) -> {
@@ -95,6 +103,13 @@ public final class StreamValidator {
             }
             pmin.merge(p.symbol, px, (a, b) -> a.compareTo(b) <= 0 ? a : b);
             pmax.merge(p.symbol, px, (a, b) -> a.compareTo(b) >= 0 ? a : b);
+            java.util.ArrayDeque<Object[]> dq =
+                    recent.computeIfAbsent(p.symbol, x -> new java.util.ArrayDeque<>());
+            dq.addLast(new Object[]{p.eventTime, px});
+            long newest = latestTs.get(p.symbol);
+            while (!dq.isEmpty() && (Long) dq.peekFirst()[0] < newest - lagMs) {
+                dq.pollFirst();   // bounded: holds only lagMs worth of ticks
+            }
         });
 
         Map<String, String> outPosAcct = lastPerKey(props, params.get("topic.position.account.ticker", "position-by-account-ticker"), idleMs);
@@ -132,11 +147,21 @@ public final class StreamValidator {
         }
         check("completeness sum(accounts)==ticker", bad == 0, rolled.size() + " tickers, " + bad + " disagree");
 
-        int[] r1 = mvCheck(outMvAcct, posAcct, true, latest, pmin, pmax);
+        Map<String, BigDecimal> wmin = new HashMap<>();
+        Map<String, BigDecimal> wmax = new HashMap<>();
+        for (Map.Entry<String, java.util.ArrayDeque<Object[]>> e : recent.entrySet()) {
+            for (Object[] t : e.getValue()) {
+                BigDecimal px = (BigDecimal) t[1];
+                wmin.merge(e.getKey(), px, (a, b) -> a.compareTo(b) <= 0 ? a : b);
+                wmax.merge(e.getKey(), px, (a, b) -> a.compareTo(b) >= 0 ? a : b);
+            }
+        }
+        System.out.println("  (lag tolerance: prices within " + lagMs + "ms of each symbol's final tick)");
+        int[] r1 = mvCheck(outMvAcct, posAcct, true, latest, wmin, wmax);
         check("MV by account == position x FINAL price", r1[0] == 0,
                 outMvAcct.size() + " checked, " + r1[0] + " wrong, " + r1[1] + " conflation lag");
 
-        int[] r2 = mvCheck(outMvTkr, posTicker, false, latest, pmin, pmax);
+        int[] r2 = mvCheck(outMvTkr, posTicker, false, latest, wmin, wmax);
         check("MV by ticker == position x FINAL price", r2[0] == 0,
                 outMvTkr.size() + " checked, " + r2[0] + " wrong, " + r2[1] + " conflation lag");
 
