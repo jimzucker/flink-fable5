@@ -44,6 +44,7 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
     private transient ValueState<Long> lastPriceTime;
     private transient ValueState<Boolean> revalPending;
     private transient Counter ticksConflated;
+    private transient Counter staleTicksDropped;
 
     public MarketValueByAccountTicker(long revalIntervalMs) {
         this.revalIntervalMs = revalIntervalMs;
@@ -60,6 +61,7 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
         revalPending = getRuntimeContext().getState(
                 new ValueStateDescriptor<>("reval-pending", Types.BOOLEAN));
         ticksConflated = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoTicksConflated");
+        staleTicksDropped = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoStaleTicksDropped");
     }
 
     @Override
@@ -89,6 +91,23 @@ public class MarketValueByAccountTicker extends KeyedCoProcessFunction<String, P
 
     @Override
     public void processElement2(PriceCents price, Context ctx, Collector<MarketValue> out) throws Exception {
+        // Keep the NEWEST tick by event time, not the last one to arrive.
+        //
+        // Arrival order is not event order here. Salted/adaptive price keys put
+        // one symbol's ticks on several partitions specifically to break the
+        // hotspot, and Kafka only orders within a partition -- so the keyBy on
+        // symbol merges several input channels and interleaves them freely.
+        // The sinks are upsert (last write wins per key), so an unguarded
+        // overwrite lets a stale tick become the published market value and stay
+        // there: wrong numbers on a green, fast job.
+        //
+        // LocalPriceConflator already guards exactly this way; the guard was
+        // simply missing on the operator that decides the published value.
+        Long heldTime = lastPriceTime.value();
+        if (heldTime != null && heldTime > price.eventTime) {
+            staleTicksDropped.inc();
+            return;
+        }
         lastPriceCents.update(price.priceCents);
         lastPriceTime.update(price.eventTime);
         if (revalIntervalMs <= 0) {

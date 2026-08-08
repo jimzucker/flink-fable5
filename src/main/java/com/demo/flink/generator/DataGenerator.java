@@ -263,7 +263,30 @@ public final class DataGenerator {
                         idx = random.nextInt(numTickers);                // uniform
                     }
                     if (pricePerSymbol) {
-                        // leave it alone: the whole point is that it never moves
+                        // Symbol i starts at $(i+1) and rises 1 cent per tick.
+                        //
+                        // It used to never move, and that silently destroyed the
+                        // property the correctness run exists to check: if every
+                        // tick for a symbol carries the SAME price, then picking
+                        // a stale tick is indistinguishable from picking the
+                        // newest one. Phase 18 passed all six checks on a static
+                        // feed while the market-value operators had no
+                        // event-time guard at all -- the checks could not have
+                        // failed. A test that cannot fail is not evidence.
+                        //
+                        // Monotonic is the useful shape: the newest tick is by
+                        // construction the HIGHEST, so any stale pick shows up
+                        // as a market value strictly BELOW expected, and the
+                        // validator's "final price" is simply the max it saw.
+                        // Arithmetic stays hand-checkable: MV = position x
+                        // ((i+1) dollars + n cents).
+                        //
+                        // Bases stay 1 dollar apart, so cross-symbol prices stop
+                        // being unique once a symbol passes 100 ticks. That only
+                        // weakens mis-join detection, which is checked per
+                        // symbol anyway -- a wrong-symbol join would have to
+                        // collide on tick count too.
+                        priceCents[idx] = (idx + 1L) * 100L + symbolCounts[idx];
                     } else if (priceCentsOverride > 0) {
                         priceCents[idx] = priceCentsOverride; // Case 2: extreme price, config only
                     } else {

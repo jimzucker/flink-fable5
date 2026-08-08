@@ -44,6 +44,11 @@ locals {
       "--generator.seed", tostring(var.generator_seed),
       "--generator.duplicate.ratio", tostring(var.generator_duplicate_ratio),
       "--generator.price.cents.override", tostring(var.generator_price_cents_override),
+      # Correctness-run knobs. DataGenerator has always read these; terraform
+      # never passed them, so the simple-numbers validation path was
+      # unreachable on AWS and only ever ran locally.
+      "--generator.qty.override", tostring(var.generator_qty_override),
+      "--generator.price.per.symbol", tostring(var.generator_price_per_symbol),
       "--topics.partitions", tostring(var.topics_partitions),
       "--topics.recreate", tostring(var.topics_recreate),
     ],

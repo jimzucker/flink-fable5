@@ -25,6 +25,7 @@ public class MarketValueByTicker extends KeyedCoProcessFunction<String, TickerPo
     private transient ValueState<Long> lastPriceTime;
     private transient ValueState<Boolean> revalPending;
     private transient Counter ticksConflated;
+    private transient Counter staleTicksDropped;
 
     public MarketValueByTicker(long revalIntervalMs) {
         this.revalIntervalMs = revalIntervalMs;
@@ -37,6 +38,7 @@ public class MarketValueByTicker extends KeyedCoProcessFunction<String, TickerPo
         lastPriceTime = getRuntimeContext().getState(new ValueStateDescriptor<>("last-price-time", Types.LONG));
         revalPending = getRuntimeContext().getState(new ValueStateDescriptor<>("reval-pending", Types.BOOLEAN));
         ticksConflated = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoTicksConflated");
+        staleTicksDropped = DemoMetrics.counter(getRuntimeContext().getMetricGroup(), "demoStaleTicksDropped");
     }
 
     @Override
@@ -66,6 +68,14 @@ public class MarketValueByTicker extends KeyedCoProcessFunction<String, TickerPo
 
     @Override
     public void processElement2(PriceCents price, Context ctx, Collector<MarketValue> out) throws Exception {
+        // Keep the NEWEST tick by event time, not the last to arrive -- salted
+        // price keys spread one symbol across partitions, so arrival order is
+        // not event order. See MarketValueByAccountTicker for the full note.
+        Long heldTime = lastPriceTime.value();
+        if (heldTime != null && heldTime > price.eventTime) {
+            staleTicksDropped.inc();
+            return;
+        }
         lastPriceCents.update(price.priceCents);
         lastPriceTime.update(price.eventTime);
         if (revalIntervalMs <= 0) {

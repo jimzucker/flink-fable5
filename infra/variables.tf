@@ -111,6 +111,18 @@ variable "jar_path" {
   default     = "../target/flink-demo.jar"
 }
 
+variable "generator_qty_override" {
+  description = "Correctness runs: fixed trade quantity (1 makes position = deduped trade count); -1 = realistic random"
+  type        = number
+  default     = -1
+}
+
+variable "generator_price_per_symbol" {
+  description = "Correctness runs: symbol i priced at $(i+1) rising 1 cent per tick, so a stale price read is detectable"
+  type        = bool
+  default     = false
+}
+
 variable "generator_cpu" {
   description = "Fargate CPU units for the generator (256 = 0.25 vCPU)"
   type        = number
