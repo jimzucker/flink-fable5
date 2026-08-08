@@ -62,3 +62,45 @@ data". The SEARCH expression named dimensions {Application,Task,TaskOperator};
 the metrics only carry {Application,Task}. SEARCH requires an exact
 dimension-set match, so naming a dimension that does not exist matches nothing
 and returns an empty result that reads exactly like "the job isn't running".
+
+STEP 1b — SAME PROFILE AT P=40: THE MECHANISM
+==============================================
+  operator                              bp%   busy max%  busy avg%  skew
+  Source: prices -> Calc -> Window     98.8       4.7        1.2     3.9
+  GroupAggregate_12 -> Calc             6.1     100.0       76.3     1.3
+  GroupAggregate_7 -> Calc              0.0     100.0       74.5     1.3
+  Join_38 -> Calc                       0.0     100.0       70.8     1.4
+  SinkMaterializer_33                   0.0      99.0       65.3     1.5
+  Join_31 -> Calc                       0.0      97.7       68.6     1.4
+
+The prices source is now 98.8% BACKPRESSURED while doing 1.2% work: it is not
+the limit, it is being held back. Skew flags appear only on operators that are
+nearly idle (Deduplicate at 20% busy, source at 4.7%) -- skew on an idle
+operator does not govern anything, so H1 stays rejected at P=40 too.
+
+WHAT DOUBLING PARALLELISM ACTUALLY BOUGHT
+  GroupAggregate busy avg fell 99% -> 75%, so the stage DID divide its work.
+  But throughput rose only 1,659/s -> 1,948/s (Phase 19, +17%).
+
+  total busy-time    P=20: 20 x 0.99 = 19.8      P=40: 40 x 0.75 = 30.0
+  per record/s       19.8/1659 = 0.0119          30.0/1948 = 0.0154   (+29%)
+
+Doubling parallelism made each record ~29% MORE expensive in CPU-time. The added
+workers did not go to waste idling -- they went to overhead: more state
+instances, more network shuffles, more serialization between subtasks. That is
+why +83% billed compute returned +17% throughput.
+
+And busy MAX stays pinned at 100% on four operators at BOTH parallelisms while
+avg drops. Throughput is governed by the slowest subtask, not the average one.
+Adding subtasks adds more chances for one to be slow; it does not lower the max.
+
+H2 CONFIRMED AS A CONTRIBUTOR, NOT THE CAUSE: SinkMaterializer_33 runs at 99%
+max / 65% avg busy. Real cost, and an operator DataStream does not have at all.
+Experiment B (materialize=NONE) will size it.
+
+MEASUREMENT NOTE: Phase 20 defines its own throughput metric and re-measures
+every condition with it, rather than inheriting Phase 19's. The unit is records
+INGESTED at the sources. Counting records emitted would inflate SQL ~2x for free,
+because SQL on an updating stream emits a retract AND an insert per change --
+the very amplification under investigation. Phase 19's numbers are kept only for
+the P=20 vs P=40 ratio quoted above.
