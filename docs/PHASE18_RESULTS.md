@@ -164,3 +164,30 @@ harness:
   harness.** It caught a rate limiter, and later a 30-symbol clamp.
 
 Evidence: [`docs/evidence/phase18/`](evidence/phase18/).
+
+---
+
+## Latency — and why this number is not comparable to earlier ones
+
+`mv-by-account-ticker`, live feed, statement started at **latest-offset** so this
+is latency rather than backlog age:
+
+| n | p50 | p90 | p99 | min |
+|---|---|---|---|---|
+| 34,206 | **4,247 ms** | 10,342 ms | 45,175 ms | 1,218 ms |
+
+**Read with the arrival regime, or not at all.** At 3,000 symbols on a
+500 prices/s feed, each symbol receives a tick roughly every 6 seconds. The
+250 ms tumbling window cannot close until a watermark advances past it, so this
+figure is dominated by **waiting for the next tick of that symbol**, not by
+processing time.
+
+It is therefore **not** comparable to the Phase 12 measurement (p50 1.8 s),
+which was taken at 10 symbols and 10,000 prices/s — every symbol receiving
+~1,000 ticks/sec. Same pipeline, different arrival rate per key, and per-key
+arrival rate is what drives event-time window latency.
+
+**The honest statement:** for a wide, thinly-traded universe, end-to-end latency
+is governed by how often each individual symbol trades — not by the platform.
+A benchmark that reports a single latency number without stating ticks-per-key
+is reporting its own feed shape.

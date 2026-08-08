@@ -1,0 +1,4 @@
+latency statement: RUNNING 
+started at latest-offset (measures latency, not backlog age)
+=== probing latency (live feed, latest-offset = real latency not backlog age) ===
+LATENCY mv-by-account-ticker: n=34206 p50=4247ms p90=10342ms p99=45175ms min=1218ms max=53211ms mean=6383ms
