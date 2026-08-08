@@ -1,0 +1,2 @@
+p18-perf10 RUNNING on lfcp-v7rg0vp at 00:40:12Z
+P18_DRAIN p18-perf10 pool=lfcp-v7rg0vp seeded=13,860,000 secs=674 rate=20,564/s cfu_avg=8.8 cfu_max=10.0
