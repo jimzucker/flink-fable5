@@ -1,0 +1,22 @@
+PHASE 20 — WHY DOESN'T FLINK SQL SCALE?
+=======================================
+User: "ok new phase whats are plan to figure out why SQL doesnt scale?"
+      "ok, run w/o prompting me"
+
+Phase 19 established THAT SQL does not convert added compute into throughput on
+either cloud. It did not establish WHY, and every measurement so far has been
+whole-pipeline, which cannot identify which stage refuses to parallelise.
+
+LEADING HYPOTHESIS, and we built it ourselves: the realistic market puts ONE IPO
+symbol at 30% of the tape. Flink sends one key to one worker, so a single subtask
+owns 30% of the work regardless of parallelism -- Amdahl's law caps speedup at
+~3.3x. That would look exactly like "SQL doesn't scale", and would mean the
+finding is mis-stated.
+
+Counter-evidence: DataStream ran the SAME skewed feed and sustained 5.5x. So skew
+is likely a factor, not the whole story. Experiment D (DataStream scaling on the
+same feed) is the control that separates "the workload can't scale" from "SQL
+can't scale it".
+
+Plan in docs/PHASE20_PLAN.md. Diagnosis first (per-operator backpressure and
+subtask skew), then one-variable experiments.
