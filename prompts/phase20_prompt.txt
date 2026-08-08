@@ -236,3 +236,37 @@ REQUIRED FOR THE RERUN:
   3. Report totals via phase20_totals.py, never per-subtask averages.
   4. Randomize or alternate condition order so backlog drift cannot align with
      the variable under test.
+
+V1 RESULT — ORDERING GUARD VALIDATED, AND THE BUG WAS LIVE
+===========================================================
+DataStream, adaptive keys, 200 symbols with a 30% IPO, simple numbers
+(qty=1, symbol i priced $(i+1) rising 1 cent/tick).
+
+  streamed: trades=86,600 prices=866,000 symbols=200
+  [PASS] dedup: 4,608 duplicates, 81,992 unique of 86,600
+  [PASS] positions by account+ticker: 1,000 keys, 0 mismatched
+  [PASS] positions by ticker: 200 keys, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 0 disagree
+  [PASS] MV by account == position x FINAL price: 1,000 checked, 0 wrong
+  [PASS] MV by ticker  == position x FINAL price:   200 checked, 0 wrong
+
+  demoStaleTicksDropped: 461,523
+
+461,523 of 866,000 prices -- MORE THAN HALF -- arrived out of order and were
+rejected by the new guard. This is not a rare race being defended against; it is
+the majority case on a salted feed, which is what adaptive keying does BY DESIGN
+to break the IPO hotspot.
+
+WHY THIS PASS IS ADMISSIBLE AND THE PHASE 18 PASS WAS NOT:
+Phase 18 ran these same six checks against a STATIC price per symbol and passed
+with NO event-time guard anywhere in the code. Identical values cannot reveal a
+reordering, so the checks could not have failed -- they were not evidence. Now
+prices move monotonically, the violation demonstrably occurs 461k times, and the
+market-value checks still come out exact. The test had a real chance to fail.
+
+It also confirms retroactively that the defect was LIVE, not theoretical: those
+461,523 ticks were previously overwriting newer prices unchallenged. Every market
+value published from the DataStream path on a salted feed was suspect.
+
+(55 and 7 rows classified "conflation lag" -- the validator's benign category
+where the observed price range explains the difference; not errors.)

@@ -1,0 +1,12 @@
+validate: subnets=subnet-026cb4fdd808b4c4c,subnet-0cc412fed1fd41dc2 sg=sg-00da627b4439445b7 (from flink-fable5-generator)
+streamed: trades=86600 prices=866000 symbols=200
+published: pos=1000 posTkr=200 mv=1000 mvTkr=200
+  [PASS] dedup: 4608 duplicates, 81992 unique of 86600
+  [PASS] positions by account+ticker: 1000 keys, 0 mismatched
+  [PASS] positions by ticker: 200 keys, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 200 tickers, 0 disagree
+  [PASS] MV by account == position x FINAL price: 1000 checked, 0 wrong, 55 conflation lag
+  [PASS] MV by ticker == position x FINAL price: 200 checked, 0 wrong, 7 conflation lag
+VALIDATION PASSED — all six checks
+  demoStaleTicksDropped (max across subtasks, summed): 461,523
+  -> out-of-order ticks DID occur; the guard is load-bearing
