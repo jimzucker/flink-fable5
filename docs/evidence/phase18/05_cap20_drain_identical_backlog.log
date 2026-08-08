@@ -1,0 +1,3 @@
+cap-20 pool: lfcp-pgkn18o  (same 13.86M backlog, no re-seed)
+p18-perf20 RUNNING on lfcp-pgkn18o at 00:52:32Z
+P18_DRAIN p18-perf20 pool=lfcp-pgkn18o seeded=13,860,000 secs=1222 rate=11,342/s cfu_avg=9.05 cfu_max=10.0

@@ -179,3 +179,39 @@ earlier in this project:
 them: the Phase 16 scaling conclusions were all measured at <=30 symbols and are
 the most likely to move. The hot-ticker ingest result should survive unchanged,
 since one partition is one partition at any cardinality.
+
+---
+
+# SCALING — answered on a valid key space
+
+Identical 13.86M backlog, same topic, no re-seed. Only the pool cap differs.
+Config validated by both correctness passes.
+
+| Pool cap | Drain | Rate | CFU avg | **CFU max** |
+|---|---|---|---|---|
+| 10 | 674s | 20,564 rec/s | 8.8 | **10.0** |
+| 20 | 1,222s | 11,342 rec/s | 9.05 | **10.0** |
+
+**A single Confluent statement will not draw more than ~10 CFU, whatever the
+pool allows.** Doubling the cap changed nothing, and this time the workload had
+~3,000 ticker keys and ~7,600 account+ticker keys — so it is NOT key starvation.
+
+**This vindicates the original Phase 16 finding** ("the CFU dial saturates"),
+which was overturned once and then re-overturned during Phase 16 itself. It was
+right. Both of the intervening "corrections" were wrong, and establishing why
+required a key space wide enough for the alternative explanation to be ruled out.
+
+**What DID change with cardinality:** at <=30 symbols the pool drew only 4-6 of
+an allowed 10; at 3,000 symbols it draws the full 10. So key cardinality
+governs how much of a statement's ceiling can be used — it does not raise the
+ceiling.
+
+**Not claimed:** cap-20 drained 1.8x slower on an identical backlog at the same
+CFU draw. That is outside the ~25% variance band and has no supported
+explanation (cold pool, or the drain-completion detector lagging on a 5-minute
+metric window). It is NOT evidence of negative scaling and is not presented as a
+result. Re-running it is the honest way to settle it.
+
+**Scaling a single statement therefore means scaling OUT, not up:** more
+statements over disjoint key ranges, each with its own ~10 CFU ceiling. Raising
+`max_cfu` on one pool buys nothing.
