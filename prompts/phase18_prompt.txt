@@ -1,0 +1,69 @@
+PHASE 18 — CORRECTNESS BEFORE PERFORMANCE
+=========================================
+User directive that opened the phase:
+  "we must always verify correctness and completeness before we chase performance"
+  "fast only counts if numbers are correct"
+  "when we do volume we have to verify correctness before we claim performance"
+  "to make correctness checking simpler use simple numbers"
+  "every price can't be identical that's too simple"
+
+WHY THE PHASE EXISTED
+Phases 16 and 17 produced dozens of throughput figures and the validation suite
+never successfully ran in either. It was attempted once, crashed on stale
+credentials, and nothing gated on it. Meanwhile four changes shipped that carry
+real correctness risk and were argued safe rather than proven: idle-timeout
+forcing watermarks past idle partitions, write-time key salting spreading a
+symbol across partitions, GROUP BY CONCAT changing the aggregation key, and
+COALESCE changing null handling.
+
+WHAT WAS BUILT
+* A STREAMING validator. The old one buffered every record into a list and could
+  not touch a volume run. The new one keeps a trade-id set plus per-key
+  aggregates, collapses prices to latest/min/max per symbol, and reads upsert
+  outputs last-value-per-key. Peak memory is a function of KEY COUNT, not record
+  count.
+* Simple-numbers mode: generator.qty.override=1 and generator.price.per.symbol
+  (symbol i priced $(i+1), static). A position becomes a count of deduped trades
+  and market value becomes that count times the symbol's own price -- an
+  off-by-N a human can see.
+  NOT a single fixed price for everything: if all prices are $1.00 then a join
+  matching the WRONG symbol gives the same answer as a correct one. Distinct
+  prices catch a mis-join; static prices remove conflation-lag ambiguity.
+* A realistic dataset: 3,000 symbols, Zipf alpha 1.0, one IPO symbol at 30% of
+  the tape. Validated offline: IPO 38.1%, top-10 53.9%, top-100 72.3%.
+
+THE BUG THE SIMPLE PASS FOUND IN ONE LINE
+A correctness run printed `symbols=30`. numTickers was
+Math.min(requested, TICKER_UNIVERSE.length), silently capping EVERY run in this
+project at 30 symbols while the plan, docs and commits all said 3,000. Weeks of
+throughput and scaling numbers described a workload 100x narrower than intended.
+Nearly every "ceiling" found earlier was that clamp.
+
+RESULTS
+Pass 1 (simple numbers, 3,000 symbols): all six checks pass.
+Pass 2 (realistic quantities and walking prices): all six checks pass, 0 wrong.
+
+Pass 2 initially FAILED with 628 mismatched market values. Rather than attribute
+them to known tumbling-window semantics, the validator was made to PROVE it: the
+implied price (published MV / recomputed position) must fall inside the min..max
+range that symbol actually traded at. All 615 did -- a real tick of the right
+symbol, just not the newest. ~6% conflation lag, disclosed as a WARN, never
+folded into a pass.
+
+SCALING, on a valid key space at last
+  cap-10   674s  20,564 rec/s  cfu_avg 8.8   cfu_max 10.0
+  cap-20  1222s  11,342 rec/s  cfu_avg 9.05  cfu_max 10.0
+The cap-20 pool never exceeded 10 CFU with 3,000 keys available, so not key
+starvation. This VINDICATED the original Phase 16 finding that the CFU dial
+saturates -- a claim overturned once and re-overturned, both times wrongly.
+Mechanism remains UNESTABLISHED; the decisive test (two concurrent statements on
+one pool) is unrun.
+
+METHOD RULES THAT PRODUCED THE CORRECTIONS
+* correctness gates performance, AT THE VOLUME BEING CLAIMED
+* verify the OUTPUT side, not just the input
+* compare rates, not drain times, unless backlogs are identical
+* purge tables between runs
+* sent_records is NOT records-processed
+* sample CFU during the run -- Confluent telemetry dies with the pool
+* when two conditions that should differ return the SAME number, suspect the harness
