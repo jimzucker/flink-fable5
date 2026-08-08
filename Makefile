@@ -46,7 +46,11 @@ ECR_REPO = $(shell cd infra && terraform output -raw generator_ecr_repo 2>/dev/n
 
 aws-push-generator: build
 	aws ecr get-login-password --region $(REGION) | docker login --username AWS --password-stdin $(ECR_REPO)
-	docker build -f docker/generator.Dockerfile -t $(ECR_REPO):latest .
+	# --platform linux/amd64 is REQUIRED: building on Apple Silicon otherwise
+	# produces an arm64 manifest and Fargate fails the pull with
+	# "image Manifest does not contain descriptor matching platform 'linux/amd64'",
+	# which surfaces only as an ECS placement error minutes later.
+	docker build --platform linux/amd64 -f docker/generator.Dockerfile -t $(ECR_REPO):latest .
 	docker push $(ECR_REPO):latest
 
 aws-deploy: build
