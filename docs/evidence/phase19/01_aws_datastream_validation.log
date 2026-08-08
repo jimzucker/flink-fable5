@@ -1,0 +1,11 @@
+=== AWS DataStream correctness validation (in-VPC, first ever) ===
+validate: subnets=subnet-05042b122e282a4e7,subnet-024704011c60e4117 sg=sg-00880b33f1837a1ce (from flink-fable5-generator)
+streamed: trades=73600 prices=7349279 symbols=3000
+published: pos=13274 posTkr=3000 mv=13274 mvTkr=3000
+  [PASS] dedup: 3668 duplicates, 69932 unique of 73600
+  [PASS] positions by account+ticker: 13274 keys, 0 mismatched
+  [PASS] positions by ticker: 3000 keys, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 3000 tickers, 0 disagree
+  [PASS] MV by account == position x FINAL price: 13274 checked, 0 wrong, 11052 conflation lag
+  [PASS] MV by ticker == position x FINAL price: 3000 checked, 0 wrong, 2489 conflation lag
+VALIDATION PASSED — all six checks
