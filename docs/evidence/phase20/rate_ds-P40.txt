@@ -1,0 +1,4 @@
+RATE ds-P40  n=11  median=922/s  p90=1,525/s  max=1,615/s
+  source tasks: 2
+    Source:_prices_source____parse_price                         mean=       412/s
+    Source:_trades_source____parse_trade                         mean=       554/s

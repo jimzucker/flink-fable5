@@ -1,0 +1,19 @@
+operator                                          bp%  busy max%  busy avg%    skew
+------------------------------------------------------------------------------------
+Source:_trades_src_1_____Calc_2_                 98.7       11.4        1.7     6.9  <-- SKEW
+Source:_prices_src_17_____Calc_18_____Window     96.0       17.2        6.4     2.7  <-- BOTTLENECK
+GroupAggregate_15_                               76.1       89.6       44.7     2.0  <-- BOTTLENECK
+Join_31_____Calc_32_____ConstraintEnforcer_3     71.6       99.0       69.1     1.4  <-- BOTTLENECK
+Deduplicate_4______Calc_5___Calc_10__            67.1      100.0       73.0     1.4  <-- BOTTLENECK
+GroupAggregate_12_____Calc_13_____Constraint     65.2       98.9       76.5     1.3  <-- BOTTLENECK
+WindowDeduplicate_22_____Calc_23_                 0.0      100.0       69.6     1.4
+Join_38_____Calc_39_____ConstraintEnforcer_4      0.0      100.0       84.7     1.2
+GroupAggregate_7_____Calc_8_____ConstraintEn      0.0      100.0       97.3     1.0
+Deduplicate_28_____Calc_29_                       0.0       24.4        7.1     3.4  <-- SKEW
+SinkMaterializer_33_____mv_by_account_ticker      0.0      100.0       96.5     1.0
+WindowDeduplicate_25_____Calc_26_                 0.0       55.0       18.8     2.9
+Deduplicate_35_____Calc_36_                       0.0       27.9        8.6     3.3  <-- SKEW
+
+bp%      = backpressure. The operator upstream of the bottleneck shows this.
+skew     = busy max / busy avg across subtasks. >=3 means one worker is
+           carrying the stage while the others idle -- a hot key.

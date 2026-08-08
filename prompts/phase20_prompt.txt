@@ -171,3 +171,68 @@ nomat config and confirm final market value = final price x correct position.
     cannot be safely removed; the fix is to resolve the upsert key so the
     planner never inserts it."
 Both outcomes are publishable. Neither is known yet.
+
+=============================================================================
+RETRACTION — THE SCALING METRIC WAS DIVIDING BY PARALLELISM
+=============================================================================
+MSF publishes numRecordsOutPerSecond once per SUBTASK under the same
+{Application,Task} dimensions. Reading it with stat "Average" therefore averages
+ACROSS SUBTASKS and returns a PER-SUBTASK rate, not a total.
+
+That is the worst possible error for a scaling study, because the quantity is
+normalized by the very variable under test: under PERFECT linear scaling a
+per-subtask average stays FLAT, and under real scaling it FALLS.
+
+  total = per-subtask average x subtask count
+
+Caught it because ds-P20 returned an implausibly tight spread (586/597/614)
+for a saturated pipeline, and because trades read 20.0/subtask x 20 = exactly
+400/s -- precisely the 4 x 100/s the generators are configured to emit. That
+exact match is the ground truth that proved the multiplier.
+
+CORRECTED TOTALS (recomputed from raw CloudWatch, scripts/phase20_totals.py)
+  sql-P20            7,690 rec/s
+  sql-P40           13,405 rec/s     -> SQL scales 1.74x
+  sql-P40-nomat     25,387 rec/s     -> materializer costs 1.89x at fixed P
+  ds-P20            11,421 rec/s     (trades caught up at exactly 400/s)
+  ds-P40            35,058 rec/s     (trades draining 19,791/s of backlog)
+
+WITHDRAWN:
+  "SQL doesn't scale -- 0.98x, doubling bought nothing"
+      -> WRONG. SQL scales 1.74x. Artifact of dividing by parallelism.
+  "Doubling parallelism raises per-record cost +29%"
+      -> WRONG, and derived from the same bad numbers. Recomputed, per-record
+         cost FELL ~22% (0.00272 -> 0.00211 busy-units per record/s).
+
+=============================================================================
+EXPERIMENT D IS INVALID — I VIOLATED A DOCUMENTED METHOD RULE
+=============================================================================
+ds-P20 ran with trades at exactly 400/s: FULLY CAUGHT UP. A caught-up pipeline
+reports its ARRIVAL RATE, not its capacity -- at P=20 DataStream had spare
+capacity it never used, because only 400 trades/s were arriving. ds-P40 was
+draining 19,791/s of accumulated trades backlog. The two conditions measured
+different quantities, so the apparent 3.07x "DataStream scaling" is an artifact.
+
+ROOT CAUSE: the chain ran generators continuously across all five conditions and
+never purged topics between them, so backlog grew monotonically and every
+condition started from a different state. The method rules carried forward at
+the bottom of PHASE20_PLAN.md say, verbatim, "purge between runs." I wrote that
+rule into the plan and then built a chain that ignored it.
+
+CONSEQUENCE: Phase 19's "SQL doesn't scale" headline is now UNSUPPORTED rather
+than disproven. D was the control meant to settle it and it did not return a
+valid answer. Not substituting a DataStream-vs-SQL verdict that was not earned.
+
+WHAT SURVIVES THE BUG (all independent of the metric):
+  * H1 REJECTED -- per-operator busy max-vs-avg, unaffected by totals.
+  * Materializer ~1.89x -- both conditions at the SAME parallelism, so the
+    per-subtask normalization cancels. Still gated on correctness validation.
+  * Price-ordering defect in MarketValueByAccountTicker:91-93 -- code-level.
+
+REQUIRED FOR THE RERUN:
+  1. Purge topics between conditions (topics_recreate, or explicit delete).
+  2. Saturate BOTH streams -- raise trades/sec so no baseline sits caught-up.
+     A condition that keeps up is measuring the generator, not the pipeline.
+  3. Report totals via phase20_totals.py, never per-subtask averages.
+  4. Randomize or alternate condition order so backlog drift cannot align with
+     the variable under test.
