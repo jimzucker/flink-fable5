@@ -119,6 +119,56 @@ starved the outputs to a fraction of the rate I was trying to allow.
 Days of arguing about speed. What settled it was whether either one could do
 what the product asked.
 
+**Then I found the bug that made most of it meaningless.**
+
+I had been testing with ten stock symbols. Real US equity markets have eight to
+eleven thousand. So I widened it to three thousand, on a realistic curve — a
+heavy head, a long tail, plus one hot new listing taking thirty percent of the
+tape, the IPO day. I validated the distribution, wrote it into the plan,
+committed it, and ran it.
+
+Then a correctness check printed `symbols=30`.
+
+One line in my generator read `Math.min(requested, 30)`. Every run I had ever
+done — every throughput number, every scaling conclusion, weeks of work — had
+quietly been capped at thirty symbols. The "three thousand symbol" dataset never
+existed.
+
+**Almost every ceiling I had found turned out to be that clamp.** With ten
+symbols, a system that gives one worker per symbol can only ever use ten
+workers. I had been measuring my own test data and attributing it to the cloud
+vendors.
+
+**And here's the part I didn't expect.** Earlier I had published that one
+platform "doesn't scale." Then I decided that was my mistake and corrected it.
+Then I corrected the correction. When I finally re-ran it properly — three
+thousand symbols, identical data, only the compute budget changed — the answer
+was that **my very first conclusion had been right all along.** A single query
+won't use more than about ten units of compute no matter how much you give it.
+Both of my confident corrections were wrong. You scale that system by running
+more queries, not by buying a bigger one.
+
+**Before any of that, though, I had to admit I'd never checked the answers.**
+Days of throughput numbers, and I had never once successfully run the test that
+verifies the output is actually correct. It had crashed the one time I tried,
+and nothing was gated on it, so nobody noticed. Meanwhile I'd shipped four
+changes to windowing and partitioning that I'd argued were safe.
+
+So I stopped and built the check properly: recompute every position and every
+market value independently from the raw data, and compare. To make failures
+legible I set every trade to one share and gave each symbol its own fixed price
+— so a position is just a count you can verify by eye.
+
+It failed. Six hundred market values were wrong.
+
+Except they weren't. They were each priced at a slightly *older* tick of the
+right symbol — a real number, just not the newest one. That's a known trade-off
+in how these windows close, and I could have waved it away. Instead I made the
+checker prove it: does the implied price fall inside the range that symbol
+actually traded at? All six hundred did. Zero wrong answers, and a six-percent
+staleness characteristic I can now describe honestly instead of hoping nobody
+asks.
+
 **The lesson I'd keep isn't about either product. Benchmarks mostly measure the
 person running them.** Mine only became trustworthy when I stopped asking "how
 fast is it" and started asking "was every part of this actually doing work, and
@@ -127,9 +177,9 @@ survive that question.
 
 **github.com/jimzucker/flink-fable5**
 
-*One day to build — 5.7 active hours, 2.6 of them me reviewing and steering,
-8 engineering prompts out of 83 messages. Then several more days learning to
-measure it: a second cloud, four full re-runs, and three published conclusions
-withdrawn. ~$5 of AWS for the build, a few dollars more for the benchmarking,
-$4 for the Confluent second opinion. Every number above traceable to a
-measurement in the repo — including the ones that replaced earlier numbers.*
+*One day to build — 5.7 active hours, 8 engineering prompts out of 83 messages.
+Then several more days learning to measure it: two clouds, a dozen full re-runs,
+and five published conclusions withdrawn — one of which turned out to have been
+right the first time. ~$57 of AWS; Confluent covered by trial credit. Every
+number in this piece is traceable to a measurement in the repo, including the
+ones that replaced earlier numbers.*

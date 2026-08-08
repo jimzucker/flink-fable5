@@ -282,21 +282,50 @@ bullets(s, [
 
 # ---------------- Slide 7d: How the numbers got trustworthy ----------------
 s = slide()
-title(s, "Most of the first numbers were wrong", "Three published conclusions did not survive re-measurement")
+title(s, "Most of the first numbers were wrong", "Five published conclusions did not survive re-measurement")
 table(s, [
     ["What I published", "What was actually happening", "Corrected"],
-    ["SQL is 124x slower", "I wrote one SQL statement per Java operator, so every stage hopped through Kafka", "1.8s, not 26.7s"],
-    ["SQL is 2.69x slower", "That run consumed 119k rec/sec and wrote NOTHING for an hour - status green throughout", "~2x, output verified"],
-    ["Confluent does not scale", "6-bucket tables capped the source at 6 readers - my test rig, not the platform", "ceiling was mine"],
-    ["Confluent scales 1.5x", "Compared runs with different backlog sizes; ramp-up penalises the smaller one", "no scaling at all"],
-    ["~$1.09/hr on AWS", "Omitted the Kafka base charge entirely", "$1.84/hr"],
-], 0.7, 1.8, 12.0, [3.4, 5.4, 3.2], size=12)
+    ["SQL is 124x slower", "One SQL statement per Java operator - every stage hopped through Kafka", "1.8s, not 26.7s"],
+    ["SQL is 2.69x slower", "That run consumed 119k rec/sec and wrote NOTHING for an hour - status green", "~2x, output verified"],
+    ["Confluent does not scale", "6-bucket tables capped the source at 6 readers - my rig, not the platform", "ceiling was mine"],
+    ["Confluent scales 1.5x", "Compared runs with different backlog sizes; ramp-up favours the larger", "no scaling at all"],
+    ["Every throughput number", "Math.min(requested, 30) capped the test data at 30 symbols, not 3,000", "re-measured at 3,000"],
+], 0.7, 1.7, 12.0, [3.3, 5.5, 3.2], size=12)
 bullets(s, [
-    ("The root cause of the worst one: I checked on every test that records went IN. I never checked that records came OUT", 0, ACCENT, True),
+    ("Root cause of the worst one: I checked on every test that records went IN. I never checked that records came OUT", 0, ACCENT, True),
     ("A pipeline that reads fast and writes nothing scores beautifully on a throughput metric", 0, DARK, False),
-    ("The optimisation I argued would slow things down made them 2.66x faster - the test took 20 minutes, the argument would have shipped a version a third as fast", 0, GREEN, True),
+    ("I published 'it does not scale', corrected it, then corrected the correction - and the ORIGINAL answer was right", 0, GREEN, True),
     ("Benchmarks mostly measure the person running them", 0, DARK, True),
-], y=5.6, size=15, gap=9)
+], y=5.7, size=15, gap=9)
+
+# ---------------- Slide 7e: Correctness before performance ----------------
+s = slide()
+title(s, "Fast only counts if the numbers are correct", "Days of throughput figures, and the correctness suite had never once run")
+bullets(s, [
+    ("Six independent checks recompute every position and market value from the RAW topics with exact decimal arithmetic", 0, DARK, True),
+    ("Market values asserted against the FINAL RAW price using OUR OWN recomputed position - so a wrong position cannot cancel a wrong price", 0, DARK, False),
+    ("To make failures legible: every trade 1 share, every symbol its own fixed price. A position is then a count you can verify by eye", 0, DARK, False),
+    ("It FAILED - 615 market values wrong. They were each priced at a slightly older tick of the RIGHT symbol", 0, ACCENT, True),
+    ("Rather than wave it away as known semantics, the checker proves it: the implied price must fall inside the range that symbol actually traded at. All 615 did", 0, GREEN, True),
+    ("Result: zero wrong answers, plus a 6% staleness characteristic now described honestly instead of hidden behind a green tick", 0, GREEN, True),
+], size=15, gap=10)
+
+# ---------------- Slide 7f: The IPO problem ----------------
+s = slide()
+title(s, "What happens on IPO day", "One symbol takes 90% of the tape - measured at the producer")
+table(s, [
+    ["Feed", "Record key", "Ingest", "Per-symbol ordering"],
+    ["Uniform", "symbol", "873,333/sec", "kept"],
+    ["90% one ticker", "symbol", "293,333/sec  (-66%)", "kept"],
+    ["90% one ticker", "salted", "764,444/sec  (-12%)", "LOST"],
+    ["90% one ticker", "adaptive", "788,888/sec  (-10%)", "kept for quiet names"],
+], 0.7, 1.9, 12.0, [3.0, 2.6, 3.4, 3.0], size=14)
+bullets(s, [
+    ("A hot listing costs two thirds of ingest BEFORE the stream processor sees a record: every producer queues behind the one broker owning that symbol's partition", 0, ACCENT, True),
+    ("Adding producers makes it worse - they contend for the same leader. No downstream tuning can touch this", 0, DARK, False),
+    ("Fix: spread at the KEY, which is upstream of every ceiling. Salt only the hot names so quiet symbols keep ordering and compaction", 0, GREEN, True),
+    ("Keying fixes INGEST only. Surviving an IPO needs both: spread at the key AND conflate before the narrow stage", 0, DARK, True),
+], y=5.4, size=14, gap=9)
 
 # ---------------- Slide 8: Production path ----------------
 s = slide()
