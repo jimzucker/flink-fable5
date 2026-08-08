@@ -1,0 +1,4 @@
+RATE sql-P40  n=12  median=151/s  p90=707/s  max=1,312/s
+  source tasks: 2
+    Source:_prices_src_17_____Calc_18_____WindowTableFunction_19 mean=       285/s
+    Source:_trades_src_1_____Calc_2_                             mean=        70/s

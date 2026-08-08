@@ -104,3 +104,32 @@ INGESTED at the sources. Counting records emitted would inflate SQL ~2x for free
 because SQL on an updating stream emits a retract AND an insert per change --
 the very amplification under investigation. Phase 19's numbers are kept only for
 the P=20 vs P=40 ratio quoted above.
+
+PRE-DECLARED STATISTIC (recorded 19:05Z, after condition 1, before conditions 2-5)
+==================================================================================
+Condition 1 came back median=151/s but max=1,312/s -- the max is ~9x the median.
+The pipeline is severely backpressured and therefore bursty.
+
+For CAPACITY under saturation the correct aggregate is total records / total
+time, which is the MEAN of the per-minute samples, not the median. The median
+discards the bursts, but the bursts are real work the pipeline actually did.
+Median is the right robust statistic for a noisy *steady* rate; it is the wrong
+one for integrating a bursty one.
+
+So the primary number for every condition is TOTAL MEAN = sum of the per-task
+mean rates, which phase20_rate.py already prints per source task for every
+condition. No script change is needed and none will be made mid-chain --
+changing the harness between conditions would make them incomparable, which is
+exactly the trap that produced the withdrawn Phase 19 numbers.
+
+  condition 1, sql-P40:  285 (prices) + 70 (trades) = 355/s   <-- primary
+                         median 151/s                          <-- secondary
+
+Declared BEFORE the SQL P=20 and DataStream numbers exist, so the choice cannot
+be fitted to a preferred conclusion.
+
+STOPPING RULE, also declared now: within-run spread here is far worse than the
++/-25% run-to-run rule this project already operates under. If the SQL scaling
+ratio and the DataStream scaling ratio differ by less than that spread, the
+honest report is "this measurement cannot resolve the difference" -- NOT a
+ratio. A number that cannot survive its own noise is not a result.
