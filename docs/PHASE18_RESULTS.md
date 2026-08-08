@@ -69,9 +69,24 @@ Identical 13.86M backlog, same topic, no re-seed. Only the pool cap differs.
 | 10 | 674s | 20,564 rec/s | 8.8 | **10.0** |
 | 20 | 1,222s | 11,342 rec/s | 9.05 | **10.0** |
 
-**A single Confluent statement will not draw more than ~10 CFU whatever the pool
-allows.** Doubling the cap changed nothing — and this time ~3,000 ticker keys
+**A single Confluent statement did not draw more than ~10 CFU whatever the pool
+allowed.** Doubling the cap changed nothing — and this time ~3,000 ticker keys
 and ~7,600 account+ticker keys were available, so key starvation is ruled out.
+
+**The MECHANISM is not established.** The ceiling is measured; the cause is not.
+Candidates not yet distinguished:
+
+1. a per-statement CFU cap (not found in Confluent's Autopilot documentation);
+2. Autopilot declining to scale — it provisions "for current load", and a drain
+   may not present the lag or backpressure signal it scales on;
+3. planner-fixed parallelism for this statement shape;
+4. something specific to a fused statement set — four sinks sharing one source
+   scan may pin parallelism.
+
+**The decisive test, not yet run:** run TWO statements concurrently on one pool.
+If the pool then draws >10 CFU in total, the limit is per-statement; if it still
+caps at ~10, the limit is the pool or the autoscaler. Until that is run, "scale
+out rather than up" is a reasonable working recommendation but not a proven one.
 
 **This vindicates the original Phase 16 finding** that the CFU dial saturates —
 a claim overturned once, then re-overturned, both times wrongly. Establishing it
@@ -82,8 +97,9 @@ the 30-symbol clamp had made impossible.
 allowed 10; at 3,000 it draws the full 10. **Cardinality governs how much of the
 ceiling is usable, not where the ceiling is.**
 
-**Consequence: scale OUT, not up.** More statements over disjoint key ranges,
-each with its own ~10 CFU ceiling. Raising `max_cfu` on one pool buys nothing.
+**Working recommendation (not proven): scale OUT, not up.** Raising `max_cfu` on
+one pool demonstrably bought nothing. Whether more statements would help depends
+on the unresolved mechanism above.
 
 **Not claimed:** cap-20 drained 1.8× slower on identical work at the same CFU
 draw. That is outside the ~25% variance band with no supported explanation —
