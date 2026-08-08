@@ -1,0 +1,4 @@
+RATE sql-P40-nomat  n=12  median=697/s  p90=1,142/s  max=1,713/s
+  source tasks: 2
+    Source:_prices_src_17_____Calc_18_____WindowTableFunction_19 mean=       450/s
+    Source:_trades_src_1_____Calc_2_                             mean=       212/s

@@ -133,3 +133,41 @@ STOPPING RULE, also declared now: within-run spread here is far worse than the
 ratio and the DataStream scaling ratio differ by less than that spread, the
 honest report is "this measurement cannot resolve the difference" -- NOT a
 ratio. A number that cannot survive its own noise is not a result.
+
+EXPERIMENT B RESULT — MATERIALIZER COSTS 46% OF THROUGHPUT (PROVISIONAL)
+========================================================================
+  condition                        primary (integrated)   median
+  sql-P40                          285+70  =  355/s        151/s
+  sql-P40-nomat                    450+212 =  662/s        697/s
+                                   ------- 1.86x -------
+
+Verified the config actually took effect: zero SinkMaterializer operators remain
+in the P=40-nomat plan (grep count 0), vs one at 99% max / 65% avg busy with it
+on. This is not a config that was silently ignored.
+
+H2 is confirmed as a MAJOR contributor, not a minor one. The
+SinkUpsertMaterializer -- present only because mv-by-account-ticker carries an
+unresolved upsert key -- was consuming ~46% of throughput. DataStream has no
+such operator, so a real slice of the "SQL is 5.5x slower" gap is this one
+fixable defect rather than anything intrinsic to SQL.
+
+*** THIS SPEEDUP IS NOT CLAIMABLE YET ***
+Flink inserts that materializer PRECISELY BECAUSE the planner cannot prove the
+upsert key matches the primary key. Setting it to NONE deletes the operator that
+was repairing out-of-order updates. The plausible failure is silent: final
+market values that are wrong, with the job healthy and fast.
+
+That is exactly the case the standing rule governs -- correctness and
+completeness BEFORE performance; fast only counts if the numbers are correct. A
+1.86x number obtained by deleting the correctness operator is the single easiest
+way to publish a fast wrong answer, so it is recorded as PROVISIONAL and gated
+on validation.
+
+REQUIRED BEFORE THIS BECOMES A RESULT: run the six-check validator against the
+nomat config and confirm final market value = final price x correct position.
+  - validator PASSES -> 1.86x is a real, free win; resolve the upsert key
+    properly and keep it.
+  - validator FAILS  -> the finding becomes "the materializer costs 46% and
+    cannot be safely removed; the fix is to resolve the upsert key so the
+    planner never inserts it."
+Both outcomes are publishable. Neither is known yet.
