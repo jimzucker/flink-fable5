@@ -146,3 +146,36 @@ symbols the ticker-keyed stages have thousands of keys and
 * Two runs minimum near a close call — run-to-run variance is ~25%.
 * When two conditions that should differ return the **same** number, suspect the
   harness.
+
+---
+
+# REMAINING WORK — execution plan
+
+Correctness is done and both passes are green. Everything below is gated behind
+that and runs without further prompting.
+
+| # | Step | Success criterion |
+|---|---|---|
+| 1 | cap-10 drain, 3,000 symbols | rate + `cfu_max` recorded, validated config |
+| 2 | cap-20 drain, same backlog size | rates compared, CFU sampled live |
+| 3 | Confluent end-to-end latency | p50/p99 on the corrected config |
+| 4 | Rewrite results / README / article / deck | one clean story, no back-and-forth |
+| 5 | Tag `Phase-18`, squash-merge to main | branch kept |
+| 6 | Tear down, verify zeros | metrics captured BEFORE teardown |
+
+**Guards that apply to every measurement below**, each earned by a wrong number
+earlier in this project:
+
+* correctness gates performance — already satisfied, both passes green
+* compare **rates**, never drain times, unless backlogs are identical
+* purge tables between runs
+* `sent_records` is not records-processed — use seeded / duration
+* sample CFU **during** the run; Confluent telemetry dies with the pool
+* ~25% run-to-run variance: a gap under that is **not** a result
+* when two conditions that should differ return the same number, suspect the
+  harness
+
+**Expected revisions**, stated in advance so the write-up is not shaped to fit
+them: the Phase 16 scaling conclusions were all measured at <=30 symbols and are
+the most likely to move. The hot-ticker ingest result should survive unchanged,
+since one partition is one partition at any cardinality.
