@@ -270,3 +270,40 @@ value published from the DataStream path on a salted feed was suspect.
 
 (55 and 7 rows classified "conflation lag" -- the validator's benign category
 where the observed price range explains the difference; not errors.)
+
+V2 / V3 — INCONCLUSIVE ON MARKET-VALUE CORRECTNESS (tolerance was vacuous)
+==========================================================================
+  V2 sql-mat   : 1,000/1,000 and 200/200 keys in "conflation lag", 0 exact
+  V3 sql-nomat : 1,000/1,000 and 200/200 keys in "conflation lag", 0 exact
+
+Both report "VALIDATION PASSED", and neither pass means anything for market
+values. The lag rule accepted any implied price inside the symbol's WHOLE-RUN
+min/max. With prices now moving monotonically that range spans the entire run,
+so every price the pipeline ever emitted is accepted -- the check cannot tell
+250ms of lag from minutes of staleness.
+
+Note the symmetry of the two failures, because it is the actual lesson:
+  Phase 18, static prices  -> tolerance width ZERO, but nothing could differ.
+  Phase 20, monotonic      -> differences occur, but tolerance is the whole run.
+Both configurations passed every check. NEITHER COULD HAVE FAILED. Widening the
+signal without bounding the tolerance just moved the vacuum.
+
+FIXED: validator now keeps a per-symbol deque of ticks within validate.lag.ms
+(default 2000) of that symbol's newest tick and accepts only implied prices
+inside that window. Acceptable staleness is a property of the conflation
+interval, not of run length.
+
+V1 IS UNAFFECTED: 945 of 1,000 keys matched EXACTLY and never touched the
+tolerance. The DataStream ordering guard result stands.
+
+COUNTER CONTAMINATION CONFIRMED (and self-corrected):
+  V2 reported demoStaleTicksDropped = 580,867
+  V3 reported demoStaleTicksDropped = 0
+SQL mode does not run MarketValueByAccountTicker/ByTicker at all, so 0 is the
+only correct SQL-mode reading. V2's figure was V1's DataStream run bleeding
+through the counter's 25-minute lookback. Diagnosed from the metric's own
+inconsistency and confirmed by V3 one condition later.
+
+CONSEQUENCE: the 1.89x materializer result remains UNCLAIMED. Whether removing
+the materializer is safe is still untested -- both attempts to test it used a
+check that could not fail.

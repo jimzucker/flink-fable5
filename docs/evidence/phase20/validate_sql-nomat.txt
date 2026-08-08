@@ -1,0 +1,12 @@
+validate: subnets=subnet-026cb4fdd808b4c4c,subnet-0cc412fed1fd41dc2 sg=sg-00da627b4439445b7 (from flink-fable5-generator)
+streamed: trades=366800 prices=3668000 symbols=200
+published: pos=1000 posTkr=200 mv=1000 mvTkr=200
+  [PASS] dedup: 19174 duplicates, 347626 unique of 366800
+  [PASS] positions by account+ticker: 1000 keys, 0 mismatched
+  [PASS] positions by ticker: 200 keys, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 200 tickers, 0 disagree
+  [PASS] MV by account == position x FINAL price: 1000 checked, 0 wrong, 1000 conflation lag
+  [PASS] MV by ticker == position x FINAL price: 200 checked, 0 wrong, 200 conflation lag
+VALIDATION PASSED — all six checks
+  demoStaleTicksDropped (max across subtasks, summed): 0
+  -> no stale ticks observed in this run
