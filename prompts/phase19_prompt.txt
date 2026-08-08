@@ -1,0 +1,67 @@
+PHASE 19 — DataStream API vs Flink SQL, ON A COMMON BASIS
+=========================================================
+User asks: "can we test scaling on aws sql vs Confluent?" and later:
+  "aws sql didnt scale either"
+  "in the article/posts/docs/ppt we should frame everything as datastream api
+   vs sql not aws vs confluent"
+
+WHAT MADE THIS PHASE NECESSARY
+Phase 18 fixed the 30-symbol clamp but only Confluent had been re-measured on
+the realistic market. The AWS cells were still clamp-era, and had NEVER been
+correctness-validated at all -- MSK sits in a private subnet and the validator
+only existed as a laptop script.
+
+BUILT
+* StreamValidator: the same six checks as a Fargate one-off inside the VPC,
+  reusing the generator's image, task role and IAM auth. Network config derived
+  from the RUNNING generator service, never a name wildcard (that once matched
+  the MSK cluster's security group and cost hours of phantom "no records").
+* Distribution parameters wired into the AWS terraform. Without this the AWS
+  side would have run a UNIFORM 3,000-symbol feed against Confluent's Pareto
+  curve -- another apples-to-oranges cell, caught before it cost a run.
+
+CORRECTNESS -- first ever for AWS
+  trades=73,600 prices=7,349,279 symbols=3,000
+  dedup 3,668 duplicates dropped; 13,274 positions and 3,000 ticker aggregates
+  all exact; MV 0 wrong.
+Every DataStream figure published since Phase 6 was unverified until this point.
+
+Also quantified a tension not previously measured: conflation lag is 83% on AWS
+vs 6% on Confluent. That is CR-1 working as designed -- AWS emits at most once
+per second per key, so values are usually priced a beat behind. Capping updates
+to human reading speed NECESSARILY trades price freshness.
+
+THROUGHPUT -- identical live load, window and metric
+  DataStream (AWS)  median 5,183/s  p90 10,055/s
+  SQL (AWS)         median   950/s  p90  1,456/s   => 5.5x / 6.9x
+The gap WIDENS with cardinality: ~2x at 30 symbols, ~5.5x at 3,000. SQL's
+per-record and state overhead scales worse with key count, which a narrow
+benchmark hides.
+
+SCALING -- NEITHER PLATFORM SCALED
+  Confluent  max_cfu 10 -> 20        0%    autoscaler kept drawing 10 CFU
+  AWS        parallelism 20 -> 40  +17%    INSIDE the +-25% noise band,
+                                           for +83% billed compute
+Threshold declared BEFORE the run: >=1.6x genuine, 1.2-1.6x partial, <1.2x none.
+Median landed at 1.17x. +17% is not a weaker form of scaling -- it is
+indistinguishable from zero. The differing mechanisms are a footnote about HOW,
+not a second finding.
+
+THE REFRAME THE USER ASKED FOR
+The vendor was never the variable. Same cloud: DataStream sustains 5.5x SQL.
+Both clouds: SQL failed to scale on each. The axis is the API.
+
+What IS cloud-specific, kept separate so it is not confused with the API story:
+CR-1 cadence expressible on AWS SQL and not on Confluent; Confluent names
+expensive query shapes in its console while MSF stays silent; partitions billed
+on MSK and free on eCKU; CloudWatch outlives teardown, Confluent telemetry does
+not.
+
+METHOD FAILURES WORTH REMEMBERING
+Completion detection failed THREE ways in this phase alone: rate-based lagged a
+3-minute window (understating by 25%), counter-plateau read a steady rate as
+"finished", and a "real work" guard fired during warm-up inside the metric blind
+spot. AWS throughput is therefore reported as a RATIO from sustained sampling
+rather than a drain rate.
+Also: a suppressed `docker push` hid a failure, and zsh read `:l` in
+"$ECR:latest" as the lowercase modifier, pushing to a repo named "...atest".
