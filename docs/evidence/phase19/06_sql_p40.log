@@ -1,0 +1,6 @@
+applied P=40
+  mode = sql  parallelism = 40  perKPU = 4
+  P=40 asserted (11 billed KPU)
+P=40 running with 4 generators at 16:13:59Z
+observing sql-P40 for 11 min (past the ~2min blind spot)
+RATE sql-P40 n=11 median=1,948/s p90=3,290/s max=4,356/s

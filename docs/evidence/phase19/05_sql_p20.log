@@ -1,0 +1,2 @@
+observing sql-P20 for 11 min (past the ~2min blind spot)
+RATE sql-P20 n=11 median=1,659/s p90=1,926/s max=2,158/s

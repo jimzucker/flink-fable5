@@ -74,3 +74,36 @@ Almost every wrong number came from the harness, not the systems under test:
 **Completion detection failed three separate ways**, which is why the AWS
 throughput figures are reported as a ratio from sustained-rate sampling rather
 than as drain-to-completion rates.
+
+## SQL scaling — AWS vs Confluent, both poor, different mechanisms
+
+Identical live load (4 generators, ~40k prices/s, saturating), identical window
+and metric, one variable changed.
+
+| | P=20 | P=40 | ratio |
+|---|---|---|---|
+| median | 1,659/s | 1,948/s | **1.17x** |
+| p90 | 1,926/s | 3,290/s | 1.71x |
+| billed KPU | 6 | 11 | **1.83x cost** |
+
+**Median 1.17x is inside the ~25% run-to-run variance band — no measurable
+scaling.** The p90 does move, so extra capacity helps at peaks but not at
+typical throughput. Cost efficiency worsens: +83% billed compute for +17%
+median throughput.
+
+| Platform | Knob doubled | Result |
+|---|---|---|
+| **Confluent SQL** | `max_cfu` 10 → 20 | **0%** — Autopilot drew max 10 CFU either way |
+| **AWS SQL** | parallelism 20 → 40 | **+17% median** (noise), +71% p90, +83% cost |
+
+**Different mechanisms, same practical answer.** On Confluent you cannot buy
+past the ceiling — the autoscaler declines to draw the capacity. On AWS you can
+buy it and MSF provisions it, but the query does not convert it into steady
+throughput.
+
+**This reframes the DataStream advantage.** It is not only per-record speed:
+DataStream converts added parallelism into throughput, and this SQL topology
+largely does not. For a workload expected to grow, that difference compounds.
+
+*Threshold declared before measuring: >=1.6x genuine scaling, 1.2-1.6x partial,
+<1.2x none. Median landed at 1.17x.*
