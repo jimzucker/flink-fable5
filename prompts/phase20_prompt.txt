@@ -20,3 +20,45 @@ can't scale it".
 
 Plan in docs/PHASE20_PLAN.md. Diagnosis first (per-operator backpressure and
 subtask skew), then one-variable experiments.
+
+STEP 1 RESULT — H1 (hot-key skew) REJECTED BY MEASUREMENT
+==========================================================
+Per-operator profile, SQL at P=20, saturating load, 3,000 symbols with a 30% IPO:
+
+  operator                              bp%   busy max%  busy avg%  skew
+  Source: prices -> Calc -> Window     56.3      67.0       48.0     1.4
+  GroupAggregate_7 -> Calc             0.0      100.0       99.8     1.0
+  GroupAggregate_12 -> Calc            2.9      100.0       99.0     1.0
+  SinkMaterializer_33 -> mv_by_account 0.0       98.6       77.9     1.3
+  Join_31 -> Calc                     12.0       94.5       58.2     1.6
+  Deduplicate_28                       0.0       74.6       27.8     2.7
+
+EVERY skew ratio is 1.0-2.7. No operator has one worker carrying the stage, so
+the 30% IPO key is NOT the ceiling. The leading hypothesis was wrong and would
+have survived indefinitely without per-operator visibility -- every previous
+measurement was a pipeline average, which cannot show one overloaded worker
+either way.
+
+THE ACTUAL BOTTLENECK: the GroupAggregate operators, at 99-100% busy on EVERY
+subtask. Uniformly saturated, not skewed. The prices source is backpressured
+56% because those aggregates cannot accept more.
+
+H2 IS REAL: SinkMaterializer_33 runs at 78% average busy. That is the operator
+the unresolved upsert key inserts, and DataStream does not have it at all.
+
+LIKELY MECHANISM: the aggregates sit on an UPDATING stream, so each input change
+propagates as a retract + insert pair, and the materializer adds another
+stateful correction. SQL performs several times the work per input record that
+DataStream does. That explains lower throughput directly.
+
+STILL OPEN: uniform saturation at P=20 does not by itself explain failure to
+scale -- if all 20 subtasks are pinned, 40 should help. Next measurement is the
+same profile at P=40. If GroupAggregate busy% DROPS, the stage scaled and the
+limit is elsewhere (source, or the metric). If it stays at ~100%, the work per
+subtask is not decreasing with parallelism, which is the real finding.
+
+NOTE ON THE HARNESS: the first three profile attempts returned "no per-operator
+data". The SEARCH expression named dimensions {Application,Task,TaskOperator};
+the metrics only carry {Application,Task}. SEARCH requires an exact
+dimension-set match, so naming a dimension that does not exist matches nothing
+and returns an empty result that reads exactly like "the job isn't running".

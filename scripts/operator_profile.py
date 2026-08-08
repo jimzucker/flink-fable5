@@ -21,7 +21,11 @@ mins = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 
 
 def search(metric, stat):
-    expr = (f"SEARCH('{{{NS},Application,Task,TaskOperator}} MetricName=\"{metric}\" "
+    # Dimension set is Application,Task -- NOT Application,Task,TaskOperator.
+    # SEARCH requires an exact dimension-set match, so naming a dimension the
+    # metric does not carry silently matches nothing and returns an empty result
+    # that reads like "the job isn't running".
+    expr = (f"SEARCH('{{{NS},Application,Task}} MetricName=\"{metric}\" "
             f"Application=\"{APP}\"', '{stat}')")
     end = datetime.now(timezone.utc)
     start = end - timedelta(minutes=mins)
