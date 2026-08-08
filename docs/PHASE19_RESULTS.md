@@ -1,4 +1,10 @@
-# Phase 19 — the four lenses on a common basis
+# Phase 19 — DataStream API vs Flink SQL, on a common basis
+
+**The axis is the API, not the vendor.** Every result below points the same way:
+measured on the *same* cloud, DataStream sustains 5.5x SQL; measured on *both*
+clouds, SQL failed to scale on each. AWS-vs-Confluent differences exist but they
+are capability and cost differences, not performance ones — they are listed
+separately at the end so they are not confused with the API finding.
 
 All three cells finally measured on the **same market**: 3,000 symbols, Zipf
 α=1.0, one IPO symbol at 30% of the tape, adaptive write-time keys,

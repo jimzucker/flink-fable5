@@ -104,10 +104,18 @@ I spent weeks tuning.** It was Kafka — the base charge and the per-partition
 fee. All that pipeline optimisation was working on the smaller half of the
 invoice.
 
-**So: Java where latency or control matter. SQL where a couple of seconds is
-fine and speed-to-build wins — provided you write it as one job, not a chain of
-statements, which is a 15× mistake hiding in plain sight.** Both produced
-identical results, every time.
+**One thing I'd stress about all of this: the choice that mattered was never
+which cloud.** I ran the SQL version on both, and it behaved the same way on
+each — same rough speed, same failure to scale. I ran both versions on the *same*
+cloud, and the difference was large. The variable was the API, not the vendor.
+The cloud differences are real but they're about capability and billing, not
+speed: one can express a rate limit the other can't, one warns you when your
+query is expensive, one charges for partitions and the other doesn't.
+
+**So: the DataStream API where latency, control, or growth matter. SQL where a
+couple of seconds is fine and speed-to-build wins — provided you write it as one
+job, not a chain of statements, which is a 15× mistake hiding in plain sight.**
+Both produced identical results, every time.
 
 But the thing that actually decided it wasn't speed at all. A number on a screen
 takes 300–500 milliseconds to read, so anything faster is unreadable flicker —

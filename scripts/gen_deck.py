@@ -259,7 +259,7 @@ s.shapes.add_picture("/Users/jimzucker/code/GitHub/flink-fable5/docs/images/aws-
 
 # ---------------- Slide 7c: Second cloud — Confluent ----------------
 s = slide()
-title(s, "Two clouds, one test suite — the measured scoreboard", "Same requirements, same data, same five correctness checks; every figure output-verified")
+title(s, "DataStream API vs Flink SQL — the measured scoreboard", "The axis is the API, not the vendor: SQL was run on BOTH clouds and behaved the same on each")
 table(s, [
     ["", "AWS (Managed Flink + MSK)", "Confluent Cloud (Flink SQL)"],
     ["Correctness - 5 independent checks", "All pass, exact to the cent", "All pass, exact to the cent"],
@@ -275,7 +275,7 @@ table(s, [
 ], 0.7, 1.7, 12.0, [4.2, 3.9, 3.9], size=12)
 bullets(s, [
     ("Java is ~2x faster than SQL on identical hardware, load and logic - that gap is real and outside the noise", 0, GREEN, True),
-    ("SQL runs at the SAME speed on both clouds: the language is the constraint, not the vendor", 0, DARK, True),
+    ("SQL runs the SAME on both clouds - same speed, same failure to scale. The API is the variable; the vendor is not", 0, GREEN, True),
     ("Neither platform was the scaling limit - the business problem has ten symbols, and ten things do not spread across twenty workers", 0, DARK, False),
     ("The deciding factor was not speed: do not update a screen faster than a human can read is one option on AWS SQL and has no construct in Confluent SQL", 0, ACCENT, True),
 ], y=6.0, size=14, gap=8)
@@ -329,7 +329,7 @@ bullets(s, [
 
 # ---------------- Slide 7g: Can you buy your way out? ----------------
 s = slide()
-title(s, "SQL did not scale on either platform", "Same load, same market, one variable: the compute knob doubled")
+title(s, "Flink SQL did not scale on either cloud", "Same load, same market, one variable: the compute knob doubled")
 table(s, [
     ["", "Knob doubled", "Throughput gained", "Cost"],
     ["DataStream (Java)", "parallelism", "converts extra hardware into throughput", "linear"],
