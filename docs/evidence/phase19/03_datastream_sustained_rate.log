@@ -1,0 +1,5 @@
+applied datastream
+  pipeline.mode = datastream
+datastream + 4 generators at 14:48:37Z
+observing datastream-3000sym for 10 min (past the ~2min blind spot)
+RATE datastream-3000sym n=10 median=5,183/s p90=10,055/s max=10,687/s

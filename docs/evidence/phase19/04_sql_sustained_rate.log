@@ -1,0 +1,3 @@
+4 generators feeding; SQL app consuming live at 14:33:15Z
+observing sql-aws-3000sym for 10 min (past the ~2min blind spot)
+RATE sql-aws-3000sym n=10 median=950/s p90=1,456/s max=1,456/s
