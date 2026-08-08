@@ -32,6 +32,15 @@ locals {
       "--generator.prices.per.sec", tostring(var.generator_prices_per_sec),
       "--generator.accounts", tostring(var.generator_accounts),
       "--generator.tickers", tostring(var.generator_tickers),
+      # Realistic market shape: Pareto/Zipf across the universe plus one hot
+      # listing. A uniform feed makes every symbol equally busy, which turns
+      # "one worker per key" into apparent parallelism and hides the skew that
+      # actually happens in production.
+      "--generator.distribution", var.generator_distribution,
+      "--generator.zipf.alpha", tostring(var.generator_zipf_alpha),
+      "--generator.ipo.share", tostring(var.generator_ipo_share),
+      "--generator.ipo.ticker", tostring(var.generator_ipo_ticker),
+      "--generator.price.key.mode", var.generator_price_key_mode,
       "--generator.seed", tostring(var.generator_seed),
       "--generator.duplicate.ratio", tostring(var.generator_duplicate_ratio),
       "--generator.price.cents.override", tostring(var.generator_price_cents_override),

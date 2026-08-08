@@ -127,3 +127,33 @@ variable "snapshots_enabled" {
   type        = bool
   default     = true
 }
+
+variable "generator_distribution" {
+  description = "Volume distribution across symbols: uniform | zipf. Real tape is Pareto -- a small head carries most messages. Uniform makes key starvation the dominant effect and hides production skew."
+  type        = string
+  default     = "zipf"
+}
+
+variable "generator_zipf_alpha" {
+  description = "Zipf shape. 1.0 gives roughly top-10 ~54%, top-100 ~72% of messages across a 3,000-symbol universe."
+  type        = number
+  default     = 1.0
+}
+
+variable "generator_ipo_share" {
+  description = "Fraction of price ticks forced onto a single hot listing, on top of the baseline curve. 0.30 models an IPO / squeeze day."
+  type        = number
+  default     = 0.30
+}
+
+variable "generator_ipo_ticker" {
+  description = "Index of the hot listing within the ticker universe."
+  type        = number
+  default     = 2999
+}
+
+variable "generator_price_key_mode" {
+  description = "Kafka record key for prices: symbol | salted | adaptive. Keying by bare symbol puts a hot name in ONE partition, capping producers AND consumers. adaptive salts only symbols above a share threshold, so quiet names keep per-symbol ordering."
+  type        = string
+  default     = "adaptive"
+}
