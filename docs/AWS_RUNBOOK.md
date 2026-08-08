@@ -7,6 +7,16 @@ Serverless** (Kafka, IAM auth) + **Amazon Managed Service for Apache Flink**
 Managed Grafana can be pointed at the same CloudWatch namespace if preferred —
 the dashboard here is IaC-provisioned and needs no SSO setup.
 
+> **ECR EMPTIES ON EVERY DESTROY.** `terraform destroy` removes the ECR
+> repository, so a redeploy recreates it *empty* and the generator service
+> crash-loops with `CannotPullContainerError`. **Always push the image after
+> every apply**, before scaling generators up. Two traps when you do:
+>
+> * Use `"${ECR}:latest"` with braces. In zsh, `"$ECR:latest"` is parsed as the
+>   `:l` *lowercase modifier* and pushes to a repo named `...atest`.
+> * Never pipe the push to `/dev/null`. A failed push is otherwise invisible —
+>   the build prints success while nothing reaches the registry.
+
 ## Prerequisites
 - AWS credentials configured (`aws sts get-caller-identity` works)
 - Terraform >= 1.5, Docker, Maven, JDK 17+
