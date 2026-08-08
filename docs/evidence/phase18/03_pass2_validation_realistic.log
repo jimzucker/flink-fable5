@@ -1,0 +1,22 @@
+%6|1786149086.278|GETSUBSCRIPTIONS|rdkafka#consumer-1| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to ree8nBtIRJeddKzlGrYOOw
+%6|1786149088.612|GETSUBSCRIPTIONS|rdkafka#consumer-2| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to /yCSciVlSHSLbJVLD3XYaA
+%6|1786149090.749|GETSUBSCRIPTIONS|rdkafka#consumer-3| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to OLXSAFOmRr6qVdf42GHYDg
+%6|1786149092.292|GETSUBSCRIPTIONS|rdkafka#consumer-4| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to V/K58DbvRvS98M1p8drEug
+%6|1786149114.527|GETSUBSCRIPTIONS|rdkafka#consumer-5| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to F/WZwrHfSLGlZZWK1BdYEg
+%6|1786149136.885|GETSUBSCRIPTIONS|rdkafka#consumer-6| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to 6NXmRRPZRiqNTgF0mOlDJg
+%6|1786149159.550|GETSUBSCRIPTIONS|rdkafka#consumer-7| [thrd:main]: Telemetry client instance id changed from AAAAAAAAAAAAAAAAAAAAAA to unOslhmxTrmp2GHnvDZhsA
+
+streamed: trades=10,400 prices=104,000 symbols=2,964 conflated=0
+published: position=7,246  position=2,910  mv=7,155  mv=2,876
+
+  [PASS] dedup: 509 duplicates seen, 9,891 unique of 10,400
+  [PASS] positions by account+ticker reproducible: 7,246 keys checked, 0 mismatched
+  [PASS] positions by ticker reproducible: 2,910 keys checked, 0 mismatched
+  [PASS] completeness sum(accounts)==ticker: 2,910 tickers rolled up, 0 disagree
+  [PASS] MV by account == position x FINAL price: 7,155 checked, 0 wrong, 444 explained by conflation lag
+  [PASS] MV by ticker == position x FINAL price: 2,876 checked, 0 wrong, 175 explained by conflation lag
+  [WARN] conflation lag: 619 market values priced at the last CONFLATED tick rather than the final raw tick. Exact given what the join saw, but not the newest price. With --generator.price.cents.override this must be ZERO, since every price is identical.
+  [INFO] coverage: 91 of 7,246 position-by-account-ticker keys (1.3%) have no market value yet — no price seen for that symbol. Not counted as pass or fail.
+  [INFO] coverage: 34 of 2,910 position-by-ticker keys (1.2%) have no market value yet — no price seen for that symbol. Not counted as pass or fail.
+
+VALIDATION PASSED — all six checks

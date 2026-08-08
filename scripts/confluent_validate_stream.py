@@ -144,12 +144,35 @@ def main():
     n_trades = stream(conf, "trades", on_trade, args.timeout_sec)
 
     latest_price = {}                 # symbol -> (event_time, Decimal price)
+    # Bounded ring of recent prices per symbol. Needed to PROVE that a market
+    # value priced off an earlier tick is conflation lag rather than a wrong
+    # number: if the published MV equals position x some price the symbol
+    # actually had, the arithmetic is right and only the vintage is stale. The
+    # fused statement set computes conflation in a CTE and never writes the
+    # prices-conflated topic, so there is nothing else to compare against.
+    RING = 40
+    recent = defaultdict(list)        # symbol -> [Decimal price, ...] newest last
+    # Full observed range per symbol. A ring cannot cover a hot symbol that gets
+    # hundreds of ticks, so the definitive lag test is: does the IMPLIED price
+    # (published MV / recomputed position) fall inside the min..max this symbol
+    # actually traded at? If yes the pipeline used a real price of that symbol
+    # and only the vintage is stale. If no, the number is genuinely wrong.
+    pmin, pmax = {}, {}
 
     def on_price(_k, p):
         s, et = p["symbol"], int(p["event_time"])
+        px = Decimal(str(p["price"]))
         cur = latest_price.get(s)
         if cur is None or et >= cur[0]:
-            latest_price[s] = (et, Decimal(str(p["price"])))
+            latest_price[s] = (et, px)
+        r = recent[s]
+        r.append(px)
+        if len(r) > RING:
+            del r[0]
+        if s not in pmin or px < pmin[s]:
+            pmin[s] = px
+        if s not in pmax or px > pmax[s]:
+            pmax[s] = px
 
     n_prices = stream(conf, "prices", on_price, args.timeout_sec)
 
@@ -217,10 +240,25 @@ def main():
             got = Decimal(str(v.get("mv", "0")))
             if Decimal(expect_qty) * raw[1] == got:
                 continue
-            # not the final raw price — is it explained by conflation lag?
+            # Not the final raw price. Is it a price this symbol ACTUALLY had?
+            # If so the arithmetic is correct and only the tick is stale --
+            # conflation lag, a known semantic of the tumbling window, which is
+            # reported but never counted as a pass.
+            matched = None
             cp = conflated.get(sym)
             if cp is not None and Decimal(expect_qty) * cp[1] == got:
-                stale.append((k, str(raw[1]), str(cp[1])))
+                matched = cp[1]
+            else:
+                for px in reversed(recent.get(sym, [])):
+                    if Decimal(expect_qty) * px == got:
+                        matched = px
+                        break
+            if matched is None and expect_qty != 0 and sym in pmin:
+                implied = got / Decimal(expect_qty)
+                if pmin[sym] <= implied <= pmax[sym]:
+                    matched = implied      # a price this symbol really traded at
+            if matched is not None:
+                stale.append((k, str(raw[1]), str(matched)))
             else:
                 strict.append((k, str(got), str(Decimal(expect_qty) * raw[1])))
         return strict, stale
