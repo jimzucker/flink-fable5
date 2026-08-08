@@ -75,7 +75,7 @@ Almost every wrong number came from the harness, not the systems under test:
 throughput figures are reported as a ratio from sustained-rate sampling rather
 than as drain-to-completion rates.
 
-## SQL scaling — AWS vs Confluent, both poor, different mechanisms
+## SQL scaling — NEITHER PLATFORM SCALED
 
 Identical live load (4 generators, ~40k prices/s, saturating), identical window
 and metric, one variable changed.
@@ -96,10 +96,13 @@ median throughput.
 | **Confluent SQL** | `max_cfu` 10 → 20 | **0%** — Autopilot drew max 10 CFU either way |
 | **AWS SQL** | parallelism 20 → 40 | **+17% median** (noise), +71% p90, +83% cost |
 
-**Different mechanisms, same practical answer.** On Confluent you cannot buy
-past the ceiling — the autoscaler declines to draw the capacity. On AWS you can
-buy it and MSF provisions it, but the query does not convert it into steady
-throughput.
+**Neither platform scaled.** That is the result. AWS's +17% is not a weaker form
+of scaling — it is inside the run-to-run noise band and indistinguishable from
+zero by the threshold set before the run. Confluent's is a flat 0%.
+
+The mechanisms differ and that is a footnote, not a second finding: Confluent's
+autoscaler declines to draw the capacity, while AWS provisions and bills it and
+the query converts almost none of it. Same outcome, reached two ways.
 
 **This reframes the DataStream advantage.** It is not only per-record speed:
 DataStream converts added parallelism into throughput, and this SQL topology

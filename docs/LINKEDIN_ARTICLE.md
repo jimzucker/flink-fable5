@@ -165,9 +165,12 @@ On the other cloud I couldn't even spend the money. I raised the ceiling from
 ten units to twenty, and the platform quietly kept drawing ten. It decided the
 query didn't need more, and there was no argument to be had.
 
-So: one cloud won't sell you the capacity, the other sells it, bills you, and
-delivers almost none of it. Arguably being prevented from spending is the better
-deal.
+**So neither one scaled.** That's the finding, and I want to be careful not to
+dress it up as a contrast. Seventeen percent isn't a weaker kind of scaling —
+it's a number I can't distinguish from zero. One cloud wouldn't sell me the
+capacity and the other sold it and delivered nothing much; the outcome was the
+same both times. If anything, being prevented from spending the money is the
+better of the two.
 
 **That reframed the whole comparison for me.** I'd been treating the Java-vs-SQL
 gap as a speed difference — Java is a few times faster per record. The bigger

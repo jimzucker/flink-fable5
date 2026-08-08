@@ -329,7 +329,7 @@ bullets(s, [
 
 # ---------------- Slide 7g: Can you buy your way out? ----------------
 s = slide()
-title(s, "When it falls behind, can you buy your way out?", "Same load, same market, one variable: the compute knob doubled")
+title(s, "SQL did not scale on either platform", "Same load, same market, one variable: the compute knob doubled")
 table(s, [
     ["", "Knob doubled", "Throughput gained", "Cost"],
     ["DataStream (Java)", "parallelism", "converts extra hardware into throughput", "linear"],
@@ -337,7 +337,7 @@ table(s, [
     ["SQL on Confluent", "pool cap 10 -> 20", "0% - platform kept drawing 10 units", "n/a"],
 ], 0.7, 2.0, 12.0, [3.0, 3.0, 4.5, 2.5], size=14)
 bullets(s, [
-    ("One cloud will not sell you the capacity; the other sells it, bills you, and delivers almost none of it", 0, ACCENT, True),
+    ("NEITHER scaled. +17% is inside the noise band - not a weaker form of scaling, a number indistinguishable from zero", 0, ACCENT, True),
     ("Threshold was set BEFORE the run: >=1.6x genuine, 1.2-1.6x partial, <1.2x none. Median landed at 1.17x", 0, DARK, False),
     ("Extra workers only help if the work can be split - a stock's numbers must be added up in one place, so the new workers idle", 0, DARK, False),
     ("The Java advantage is not mainly SPEED, it is that Java converts extra hardware into throughput and this SQL does not", 0, GREEN, True),
