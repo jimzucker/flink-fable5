@@ -1,5 +1,9 @@
 # Phase 18 results — correctness first, then what the numbers actually say
 
+> **Throughput superseded by [`PHASE19_RESULTS.md`](PHASE19_RESULTS.md)**, which
+> measured all three cells on the same 3,000-symbol market. The correctness and
+> scaling findings here stand.
+
 **This supersedes the Phase 16 and 17 performance figures.** Not because they
 were sloppily taken, but because they were taken on a workload with **at most 30
 symbols** — a `Math.min(requested, 30)` clamp silently capped every run in this

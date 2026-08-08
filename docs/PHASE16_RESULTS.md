@@ -1,6 +1,6 @@
 # Results — measured, August 2026
 
-> **⚠ PARTLY SUPERSEDED — see [`PHASE18_RESULTS.md`](PHASE18_RESULTS.md).**
+> **⚠ SUPERSEDED — current results: [`PHASE19_RESULTS.md`](PHASE19_RESULTS.md).**
 >
 > Every throughput figure below was measured on a workload of **at most 30
 > symbols**: a `Math.min(requested, 30)` clamp in the generator silently capped
