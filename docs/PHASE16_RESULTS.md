@@ -1,5 +1,14 @@
 # Results — measured, August 2026
 
+> **⚠ PARTLY SUPERSEDED — see [`PHASE18_RESULTS.md`](PHASE18_RESULTS.md).**
+>
+> Every throughput figure below was measured on a workload of **at most 30
+> symbols**: a `Math.min(requested, 30)` clamp in the generator silently capped
+> the ticker universe, and it was not found until Phase 18. The scaling
+> conclusions in particular were properties of that benchmark, not of the
+> platforms. The correctness posture here is also weaker than it should be —
+> the validation suite never ran successfully during this phase.
+
 **This file supersedes all earlier performance numbers in this repository.**
 Every figure was measured in a single session on matched configurations and
 verified to have produced output. Where the data cannot support a claim, the

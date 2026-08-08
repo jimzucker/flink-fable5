@@ -24,13 +24,17 @@ with one command; deploys to AWS with the **same jar** via Terraform.
 | **Conflating before a narrow stage is worth 2.66×** | The price feed funnels through ten ticker-keyed workers; cutting volume before that narrowing beat every config knob |
 | **A product requirement found the real gap** | Capping output at human reading speed is one connector option on AWS SQL and **not expressible in Confluent SQL at all** — verified under saturation on AWS at 45.3 updates/s across 50 keys |
 | **Confluent names expensive queries; MSF does not** | Both platforms inserted the same state-heavy correction operator. Confluent flagged it in the console with a doc link; on MSF it was found only by reading an execution plan |
-| **Scaling is bounded by the workload, not the platform** | Ten tickers cap usable parallelism at ten: a pool allowed 20 CFU drew a measured maximum of 10 |
+| **A single Confluent statement caps at ~10 CFU** | A pool allowed 20 CFU drew a measured max of 10, with ~3,000 keys available — so scale OUT (more statements over disjoint keys), not up ([results](docs/PHASE18_RESULTS.md)) |
+| **Correctness proven, not assumed** | Six checks recompute every output from the raw topics with exact decimal arithmetic: dedup, both position aggregations, cross-aggregation completeness, and both market-value paths against the final raw price |
+| **A hot IPO costs two thirds of ingest** | 873k → 293k prices/s when one symbol takes 90% of the tape; adaptive write-time keying recovers it to 789k while quiet symbols keep per-symbol ordering |
 | **64% of the AWS bill is Kafka, not Flink** | $1.84/hr = $0.66 compute + $0.75 MSK base + $0.43 partitions. Partitions are billed on AWS and free on Confluent |
 
-> **Numbers:** [`docs/PHASE16_RESULTS.md`](docs/PHASE16_RESULTS.md) supersedes all
-> earlier performance figures in this repo. Every result there was
-> output-verified; several earlier claims were measured against ceilings built
-> into the test rig and are retired.
+> **Numbers:** [`docs/PHASE18_RESULTS.md`](docs/PHASE18_RESULTS.md) is current
+> and supersedes all earlier performance figures. Everything there is gated on
+> correctness — six independent checks recomputed from the raw topics — and
+> measured on a realistic market (3,000 symbols, Pareto-distributed, one hot
+> IPO). Earlier figures were taken on a workload of at most 30 symbols due to a
+> silent clamp, and the scaling conclusions among them were artifacts of that.
 
 ## Architecture
 
