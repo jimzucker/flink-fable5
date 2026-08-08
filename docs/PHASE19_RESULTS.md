@@ -81,6 +81,14 @@ Almost every wrong number came from the harness, not the systems under test:
 throughput figures are reported as a ratio from sustained-rate sampling rather
 than as drain-to-completion rates.
 
+> **⚠️ THE SCALING SECTION BELOW IS RETRACTED (see docs/METRIC_AUDIT.md).**
+> The P=20 vs P=40 figures came from a CloudWatch metric that reports a
+> PER-SUBTASK rate, so the comparison was divided by the very variable under
+> test. Re-measured correctly in Phase 20: **1.74x, not 1.17x** — which would
+> have MET the >=1.6x "genuine scaling" threshold declared before the run.
+> The throughput ratios elsewhere in this document are same-parallelism
+> comparisons and are NOT affected.
+
 ## SQL scaling — NEITHER PLATFORM SCALED
 
 Identical live load (4 generators, ~40k prices/s, saturating), identical window

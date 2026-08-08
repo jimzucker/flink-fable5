@@ -1,3 +1,6 @@
+> **Draft status:** scaling claims retracted pending re-measurement —
+> see `docs/METRIC_AUDIT.md`. Throughput findings unaffected.
+
 # I built a production-grade Flink trading pipeline in one day, pairing with AI. Here's every prompt.
 
 *Draft — LinkedIn article*

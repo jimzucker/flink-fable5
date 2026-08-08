@@ -1,3 +1,7 @@
+> **Draft status:** the scaling claims in this article are retracted pending
+> re-measurement — see `docs/METRIC_AUDIT.md`. The DataStream-vs-SQL
+> throughput findings are unaffected. Do not publish as-is.
+
 # I built a production-grade Flink trading pipeline in one day, pairing with AI
 
 *Draft — LinkedIn article (short). Full version with every detail: LINKEDIN_ARTICLE_FULL.md*
