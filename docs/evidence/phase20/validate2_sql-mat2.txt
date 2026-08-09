@@ -1,0 +1,47 @@
+validate: subnets=subnet-08110768eeca95bbf,subnet-064bf9e8428815012 sg=sg-0f11fe51f16bb3f57 (from flink-fable5-generator)
+validate: task ended -> STOPPED	EssentialContainerExited	Essential container in task exited	1
+validate: no parseable output yet (attempt 1), re-reading in 20s
+validate: no parseable output yet (attempt 2), re-reading in 20s
+validate: no parseable output yet (attempt 3), re-reading in 20s
+validate: NO OUTPUT after 3 attempts — task arn:aws:ecs:us-east-1:760967184165:task/flink-fable5/8a556fd01f4d45b9b94b0fd24379494c
+--- last 40 raw log lines for diagnosis ---
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+
+at java.base/java.nio.HeapByteBuffer.<init>(Unknown Source)
+
+at java.base/java.nio.ByteBuffer.allocate(Unknown Source)
+
+at org.apache.kafka.common.memory.MemoryPool$1.tryAllocate(MemoryPool.java:30)
+
+at org.apache.kafka.common.network.NetworkReceive.readFrom(NetworkReceive.java:102)
+
+at org.apache.kafka.common.network.KafkaChannel.receive(KafkaChannel.java:452)
+
+at org.apache.kafka.common.network.KafkaChannel.read(KafkaChannel.java:402)
+
+at org.apache.kafka.common.network.Selector.attemptRead(Selector.java:674)
+
+at org.apache.kafka.common.network.Selector.pollSelectionKeys(Selector.java:576)
+
+at org.apache.kafka.common.network.Selector.poll(Selector.java:481)
+
+at org.apache.kafka.clients.NetworkClient.poll(NetworkClient.java:560)
+
+at org.apache.kafka.clients.consumer.internals.ConsumerNetworkClient.poll(ConsumerNetworkClient.java:280)
+
+at org.apache.kafka.clients.consumer.internals.ConsumerNetworkClient.poll(ConsumerNetworkClient.java:251)
+
+at org.apache.kafka.clients.consumer.KafkaConsumer.pollForFetches(KafkaConsumer.java:1307)
+
+at org.apache.kafka.clients.consumer.KafkaConsumer.poll(KafkaConsumer.java:1243)
+
+at org.apache.kafka.clients.consumer.KafkaConsumer.poll(KafkaConsumer.java:1216)
+
+at com.demo.flink.generator.StreamValidator.drain(StreamValidator.java:215)
+
+at com.demo.flink.generator.StreamValidator.lastPerKey(StreamValidator.java:228)
+
+at com.demo.flink.generator.StreamValidator.main(StreamValidator.java:117)
