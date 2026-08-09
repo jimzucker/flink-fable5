@@ -1,0 +1,5 @@
+TOTALS ds-P20  grand=12,487 rec/s
+    Source:_prices_source____parse_price                 avg=   346.1/subtask x  20 =      6,923/s
+    Source:_trades_source____parse_trade                 avg=   278.2/subtask x  20 =      5,564/s
+  calibration: trades total 5,564/s is BELOW the 999,999/s generated (99% under)
+  -> falling behind on the trades path, or the multiplier is wrong. Investigate before using.

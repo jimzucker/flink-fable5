@@ -22,7 +22,7 @@ produced the retractions.
 |---|---|---|
 | SQL P=20 | **6,106** | fixed backlog, app stopped during build |
 | SQL P=40 | *pending* | |
-| DataStream P=20 | *pending* | |
+| DataStream P=20 | **12,487** | fixed backlog |
 | DataStream P=40 | *pending* | |
 
 ## Superseded (kept only to show what was replaced and why)
