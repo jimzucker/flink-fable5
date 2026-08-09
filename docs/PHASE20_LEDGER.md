@@ -13,8 +13,8 @@ produced the retractions.
 | condition | result | stale ticks | notes |
 |---|---|---|---|
 | DataStream, salted feed | **PASS** | 461,523 dropped | 945/1000 keys exact; guard is load-bearing |
-| SQL, materializer ON | **NO RESULT** | | validator OOMed (512MB task, 48-partition fetch buffers) — fixed, needs one rerun as the CONTROL |
-| SQL, materializer OFF | **FAIL — dropped** | | produced wrong market values; not a usable config, not pursued |
+| SQL, materializer ON (control) | **FAIL** | | 30/1000 and 6/200 outside a 2s tolerance — WORSE than without it |
+| SQL, materializer OFF | **FAIL** | | 20/1000 and 4/200 — same behaviour as the control, so the materializer is NOT the cause |
 
 ## Throughput / scaling — fixed backlog, one method
 
@@ -48,3 +48,32 @@ P=20 rows are unaffected: they were still draining throughout.
 and size the backlog to the FASTEST config, not the slowest. A 3-minute build at
 ~10k rec/s is roughly 2M records, which DataStream P=40 clears in well under a
 minute.
+
+## Correction: the materializer was not the cause (2026-08-09)
+
+Earlier this phase I recorded "removing the materializer FAILS correctness" from
+a single arm. The control — SQL **with** the materializer, exactly as shipped —
+then failed too, and by MORE:
+
+| config | wrong (account) | wrong (ticker) |
+|---|---|---|
+| materializer ON (control) | **30 / 1000** | **6 / 200** |
+| materializer OFF | 20 / 1000 | 4 / 200 |
+
+**The causal claim was wrong.** Both configurations behave the same, so the
+materializer does not explain the failure. I asserted cause from one arm before
+its control existed, which is the same error pattern as the metric bug: a
+confident conclusion drawn from a measurement that could not distinguish the
+hypotheses.
+
+**What the numbers actually say.** SQL produces ZERO exact matches: ~93% of keys
+land inside the 2,000ms lag tolerance and a ~3% tail falls outside it. DataStream
+on the same feed produced 945/1000 EXACT. That is a systematic latency
+difference — SQL's conflate + tumble + checkpoint path is simply further behind
+the final price — not evidence that SQL computes the wrong arithmetic.
+
+**Still open:** whether the ~3% tail is genuine staleness or an over-strict
+threshold. A tolerance sweep (2s / 5s / 10s) would separate them, and needs no
+new infrastructure beyond one run. Until then, neither "SQL is incorrect" nor
+"SQL is correct" is established — only that SQL lags materially more than
+DataStream.
