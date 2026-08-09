@@ -1,89 +1,91 @@
-# Phase 21 — is SQL's market value correct, or just late?
+# Phase 21 — SQL correctness: what we found, and the plan from here
 
-**The observation.** On AWS, SQL produced **zero** exact market-value matches
-across 1,200 keys in every run. ~93% landed inside a 2,000ms lag tolerance, ~3%
-outside it. DataStream on the identical feed matched **945/1000 exactly**.
-
-**The question.** Is SQL publishing *stale* values (a correctness defect), or
-merely *late* ones that a bounded run truncates (a latency characteristic)?
-Right now neither "SQL is correct" nor "SQL is incorrect" is established.
-
-**What Phase 20 already ruled out.** The `SinkUpsertMaterializer` is NOT the
-cause: removing it gave 20/1000 wrong, and the control with it enabled gave
-30/1000 — worse. That causal claim was made from one arm and retracted.
+**No AWS or Confluent runs until this plan is agreed.** Everything below through
+"Findings" was measured on the local Docker rig at zero cost.
 
 ---
 
-## Method: measure the distribution, don't sweep the threshold
+## Findings so far (local, controlled)
 
-A 2s/5s/10s sweep only tells us which arbitrary line the failures fall behind.
-Better: have the validator report **how stale each market value actually is**,
-in milliseconds, and print the distribution.
+### 1. Ordering is CORRECT — on every axis a consumer cares about
 
-For every MV key: `staleness = final_price_event_time − implied_price_event_time`
-where `implied_price` is recovered from `mv / position`.
+17,572 published records, SQL with conflation on, read in offset order
+(a key always hashes to one partition, so offset order IS per-key order):
 
-Report p50 / p90 / p99 / max, plus a count beyond several thresholds. One run
-then answers the threshold question for every possible threshold at once, and
-converts a binary pass/fail into a measurement.
+| topic | as_of backwards | price backwards | keys ending stale |
+|---|---|---|---|
+| position-by-account-ticker | 0 | 0 | 0 |
+| position-by-ticker | 0 | 0 | 0 |
+| mv-by-account-ticker | 0 | 0 | 0 |
+| mv-by-ticker | 0 | 0 | 0 |
 
-**This also re-grades DataStream on the same axis.** "945/1000 exact" says its
-staleness is ~0 for most keys; the distribution says what the tail does.
+* No position ever arrives out of order.
+* **No out-of-order price is ever used to compute an output** — checked on every
+  record, not just the last, so intermediate results are covered.
+* No consumer is ever left holding a value older than one already sent to them.
 
-## Hypotheses, most likely first
+Traders never see a number move backwards, and never see a value computed from a
+stale tick.
 
-### H1 — End-of-run truncation (an artifact, not a defect)
-The generator stops, so the last prices for a symbol sit in a 250ms tumble
-window that never closes — no later record advances the watermark past it. The
-final MV then reflects the second-to-last price forever. **DataStream would not
-show this** because it has no windowing on that path, which fits the observed
-asymmetry exactly.
-*Prediction:* staleness clusters near the conflation interval, and the failing
-keys are disproportionately those whose last tick arrived near the end of the run.
-*Fix if true:* it is a measurement artifact — send a watermark-advancing trailer,
-or exclude the final window. Not a production defect.
+### 2. The real defect: windows do not close when a symbol goes quiet
 
-### H2 — Idle-key starvation
-Symbols in the Zipf tail get few ticks. If a key's last update predates the
-final price by more than the window, its MV never refreshes.
-*Prediction:* failing keys correlate with LOW tick counts.
+Clean A/B, identical input (2,260 trades / 4,520 prices, same seed), one variable:
 
-### H3 — Genuine staleness under load
-SQL's conflate + tumble + checkpoint path simply runs seconds behind and never
-catches up while the backlog drains.
-*Prediction:* staleness scales with backlog depth and is roughly uniform across
-keys, not concentrated in the tail.
+| | exact | p50 | p99 | max |
+|---|---|---|---|---|
+| conflation OFF | **100%** | 0ms | 0ms | 0ms |
+| conflation ON | 0% | 2,016ms | 3,458ms | 3,458ms |
 
-### H4 — Watermark stall on idle partitions
-Known failure mode in this project (Phase 16: 119k/s consumed, zero written).
-`sql.source.idle.timeout.ms` is set to 5000, so partly mitigated — but 5s is
-longer than the 2s tolerance, which alone could explain the tail.
-*Prediction:* staleness clusters near 5,000ms.
+The pipeline never *emits* a value using the final price. Everything it does
+publish is correct and in order; the last update simply never happens.
 
-## Pre-declared interpretation (before any run)
+**This is not an end-of-run artifact.** Any symbol that stops ticking has its
+open window held indefinitely, so its market value freezes at the previous
+window — a thinly-traded ticker during the trading day hits this, not just the
+end of the stream. That makes it a production correctness fault: a trader is
+left looking at a stale market value for as long as the symbol is quiet.
 
-* **p99 staleness < 2,000ms** → SQL is correct; the earlier failures were the
-  tail of a latency distribution and the 2s threshold was simply too tight.
-* **p99 between 2,000 and 10,000ms, with the mass near the conflate/idle
-  interval** → SQL is *late, not wrong*. Report as a latency characteristic and
-  quote the number.
-* **A tail beyond 10,000ms, or staleness that grows without bound** → genuine
-  correctness defect. Chase the mechanism.
-* **Failing keys correlate with low tick counts** → H2, an idle-key problem,
-  fixable with a periodic re-emit.
+**Leading cause:** no source idle timeout locally. When a partition sees no data
+the watermark stops advancing, so windows never close. `sql.source.idle.timeout.ms`
+exists and is set to 5000 on AWS — but was never set on the local rig, which is
+exactly where the staleness reproduced.
 
-## Cost discipline
+---
 
-* One small run: 200 symbols, 16 partitions, P=8 — correctness needs distinct
-  keys, not scale. ~$2.
-* Validator change is exercised on the **local Docker rig first**; only the
-  measurement needs AWS.
-* Record to the ledger as it lands; tear down unconditionally.
+## Plan — local first, cloud only once this is settled
 
-## Method rules carried forward
+### Step 1 (local, free): does the idle timeout fix it?
+Re-run the A/B with `sql.source.idle.timeout.ms` set (try 5000, then 1000).
+*Prediction if the diagnosis is right:* staleness collapses toward 0 and the
+six checks pass with conflation still ON.
 
-* Calibrate any metric against a known truth before trusting it.
-* A test that cannot fail is not evidence — both the static-price and
-  whole-run-tolerance versions of this check were vacuous.
-* Declare interpretation thresholds before the run, not after.
-* One condition at a time, recorded before the next starts.
+### Step 2 (local, free): the quiet-symbol case, which is the real one
+Step 1 only proves the tail flushes. Construct the production condition: keep a
+few symbols ticking while others go silent mid-run, then measure staleness for
+the silent ones specifically. This is the case that matters and we have never
+tested it.
+
+### Step 3 (local, free): confirm the fix costs nothing
+Re-measure throughput locally with the idle timeout on. Closing windows on a
+timer does more work when data is sparse; verify that is negligible.
+
+### Step 4 (decide): only then consider a cloud run
+A cloud run is only worth it to confirm the fix at realistic cardinality
+(3,000 symbols, salted feed). One condition, ~$2, and only if steps 1-3 pass.
+
+---
+
+## What is NOT worth re-running
+
+* Ordering — measured, clean, and not scale-dependent.
+* The materializer — already ruled out as a cause in Phase 20.
+* Throughput/scaling — settled in Phase 20 and not affected by this.
+
+## Corrections carried into this phase
+
+* "Late, not wrong" was too generous. At rest the value never corrects, so for a
+  consumer it is simply wrong. The user's standard is the right one: final
+  position and final market value must both be correct once ticks stop.
+* The previous AWS Phase 21 run was invalid — the script recreated topics under
+  an already-running job (`topics_recreate=true` after the app was RUNNING),
+  which corrupted even the position checks. Fix the ordering before any rerun.

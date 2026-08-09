@@ -1,0 +1,49 @@
+Local A/B: identical duration (180s) and seed, one variable
+
+########## SQL (conflation off) ##########
+  pipeline.mode=sql
+  generator.qty.override=1
+  generator.price.per.symbol=true
+  job state: RUNNING, generating 180s
+  streamed: trades=2260 prices=4520 symbols=10
+    [PASS] dedup: 106 duplicates, 2154 unique of 2260
+    [PASS] positions by account+ticker: 50 keys, 0 mismatched
+    [PASS] positions by ticker: 10 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 10 tickers, 0 disagree
+    MV by account staleness: n=50 exact=50 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 50 (0.0%)
+        beyond  5000ms: 0 of 50 (0.0%)
+        beyond 10000ms: 0 of 50 (0.0%)
+    MV by ticker  staleness: n=10 exact=10 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 10 (0.0%)
+        beyond  5000ms: 0 of 10 (0.0%)
+        beyond 10000ms: 0 of 10 (0.0%)
+    [PASS] MV by account == position x FINAL price: 50 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 10 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## SQL (conflation on) ##########
+  pipeline.mode=sql
+  sql.price.conflate.ms=250
+  sql.price.salt.factor=8
+  generator.qty.override=1
+  generator.price.per.symbol=true
+  job state: RUNNING, generating 180s
+  streamed: trades=2260 prices=4520 symbols=10
+    [PASS] dedup: 106 duplicates, 2154 unique of 2260
+    [PASS] positions by account+ticker: 50 keys, 0 mismatched
+    [PASS] positions by ticker: 10 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 10 tickers, 0 disagree
+    MV by account staleness: n=50 exact=0 (0%)  p50=2016ms p90=2585ms p99=3458ms max=3458ms
+        beyond  2000ms: 30 of 50 (60.0%)
+        beyond  5000ms: 0 of 50 (0.0%)
+        beyond 10000ms: 0 of 50 (0.0%)
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=2016ms p90=2585ms p99=3458ms max=3458ms
+        beyond  2000ms: 6 of 10 (60.0%)
+        beyond  5000ms: 0 of 10 (0.0%)
+        beyond 10000ms: 0 of 10 (0.0%)
+    [FAIL] MV by account == position x FINAL price: 50 checked, 45 wrong, 5 conflation lag
+    [FAIL] MV by ticker == position x FINAL price: 10 checked, 9 wrong, 1 conflation lag
+  VALIDATION FAILED — 2 check(s)
+
+LOCAL A/B DONE

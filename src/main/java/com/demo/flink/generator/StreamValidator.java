@@ -159,6 +159,12 @@ public final class StreamValidator {
         }
         check("completeness sum(accounts)==ticker", bad == 0, rolled.size() + " tickers, " + bad + " disagree");
 
+        System.out.println("consumer-visible ordering (upsert topics, offset order == per-key order):");
+        orderCheck(props, params.get("topic.position.account.ticker", "position-by-account-ticker"), idleMs);
+        orderCheck(props, params.get("topic.position.ticker", "position-by-ticker"), idleMs);
+        orderCheck(props, params.get("topic.mv.account.ticker", "mv-by-account-ticker"), idleMs);
+        orderCheck(props, params.get("topic.mv.ticker", "mv-by-ticker"), idleMs);
+
         staleness("MV by account", outMvAcct, posAcct, true, latest, firstTs, latestTs, tickCount);
         staleness("MV by ticker ", outMvTkr, posTicker, false, latest, firstTs, latestTs, tickCount);
 
@@ -295,6 +301,73 @@ public final class StreamValidator {
                     if (r.value() != null) sink.accept(r.key(), r.value());
                 }
             }
+        }
+    }
+
+    /**
+     * What a CONSUMER sees, in the order they see it.
+     *
+     * The outputs are upsert topics, so a downstream reader applies records in
+     * offset order and the last one per key is what stays on their screen. If an
+     * OLDER update arrives after a newer one, the consumer is left holding a
+     * stale position or market value permanently -- for a trading screen that is
+     * not "late", it is wrong.
+     *
+     * A key always hashes to one partition, so per-partition offset order IS
+     * per-key order. Any decrease in as_of for a key is an ordering violation.
+     *
+     * Reports violations and, separately, how many keys END on a value that is
+     * not their own maximum as_of -- the ones a consumer would still be looking
+     * at after the stream goes quiet.
+     */
+    private static void orderCheck(Properties props, String topic, int idleMs) {
+        Map<String, Long> lastSeen = new HashMap<>();
+        Map<String, Long> maxSeen = new HashMap<>();
+        // as_of is GREATEST(position time, price time), so it cannot isolate
+        // whether a PRICE went backwards. In simple-numbers mode a symbol's
+        // price only ever rises, so the price field itself is a direct proxy:
+        // a later record carrying a LOWER price means an older tick was used
+        // after a newer one -- a consumer computing from that sees the value
+        // move backwards.
+        Map<String, java.math.BigDecimal> lastPrice = new HashMap<>();
+        int[] priceBack = {0};
+        int[] violations = {0};
+        long[] total = {0};
+        drain(props, topic, idleMs, (k, v) -> {
+            if (k == null) return;
+            total[0]++;
+            long asOf = longField(v, "as_of");
+            if (asOf == 0) asOf = longField(v, "asOf");
+            Long prev = lastSeen.get(k);
+            if (prev != null && asOf < prev) {
+                violations[0]++;      // an older update landed after a newer one
+            }
+            lastSeen.put(k, asOf);
+            maxSeen.merge(k, asOf, Math::max);
+            String pxs = strField(v, "price");
+            if (pxs != null && !pxs.isEmpty()) {
+                try {
+                    java.math.BigDecimal px = new java.math.BigDecimal(pxs);
+                    java.math.BigDecimal prevPx = lastPrice.get(k);
+                    if (prevPx != null && px.compareTo(prevPx) < 0) priceBack[0]++;
+                    lastPrice.put(k, px);
+                } catch (NumberFormatException ignored) { }
+            }
+        });
+        int endStale = 0;
+        for (Map.Entry<String, Long> e : lastSeen.entrySet()) {
+            Long mx = maxSeen.get(e.getKey());
+            if (mx != null && e.getValue() < mx) endStale++;
+        }
+        System.out.printf("  order %-28s records=%d keys=%d  as_of-backwards=%d  "
+                        + "price-backwards=%d  keys ending stale=%d%n",
+                topic, total[0], lastSeen.size(), violations[0], priceBack[0], endStale);
+        if (violations[0] == 0 && priceBack[0] == 0 && endStale == 0) {
+            System.out.println("      -> consumers always see monotonic updates and "
+                    + "end on the newest value");
+        } else {
+            System.out.println("      -> A CONSUMER CAN BE LEFT ON A STALE VALUE. "
+                    + "This is a correctness fault, not latency.");
         }
     }
 

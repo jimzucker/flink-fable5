@@ -1,1 +1,12 @@
 validate: subnets=subnet-05271d7539bbcb3ec,subnet-024b1351ba35c31b6 sg=sg-072ea501e5613d922 (from flink-fable5-generator)
+validate: task ended -> STOPPED	EssentialContainerExited	Essential container in task exited	1
+streamed: trades=90800 prices=908000 symbols=200
+published: pos=1000 posTkr=200 mv=1000 mvTkr=200
+  [PASS] dedup: 4643 duplicates, 86157 unique of 90800
+  [FAIL] positions by account+ticker: 1000 keys, 1000 mismatched
+  [FAIL] positions by ticker: 200 keys, 200 mismatched
+  [PASS] completeness sum(accounts)==ticker: 200 tickers, 0 disagree
+  (lag tolerance: prices within 2000ms of each symbol's final tick)
+  [FAIL] MV by account == position x FINAL price: 1000 checked, 875 wrong, 125 conflation lag
+  [FAIL] MV by ticker == position x FINAL price: 200 checked, 174 wrong, 26 conflation lag
+VALIDATION FAILED — 4 check(s)
