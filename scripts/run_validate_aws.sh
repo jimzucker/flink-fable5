@@ -35,6 +35,11 @@ c["command"] = keep + ["--validate.idle.ms","25000"]
 new = {k: td[k] for k in ["family","taskRoleArn","executionRoleArn","networkMode",
                           "containerDefinitions","requiresCompatibilities","cpu","memory"] if k in td}
 new["family"] = "flink-fable5-validate"
+# The generator runs fine in 512MB; the validator does not -- it assigns every
+# partition at once. Give the one-off validation task real memory (a few cents
+# for a couple of minutes) rather than debugging OOMs that surface as silence.
+new["cpu"] = "1024"
+new["memory"] = "4096"
 subprocess.run(["aws","ecs","register-task-definition","--cli-input-json",json.dumps(new),
                 "--query","taskDefinition.taskDefinitionArn","--output","text"],
                capture_output=True, text=True)

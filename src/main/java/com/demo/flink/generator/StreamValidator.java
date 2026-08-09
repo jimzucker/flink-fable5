@@ -203,7 +203,20 @@ public final class StreamValidator {
     private interface Sink { void accept(String key, String value); }
 
     private static void drain(Properties props, String topic, int idleMs, Sink sink) {
-        try (KafkaConsumer<String, String> c = new KafkaConsumer<>(props)) {
+        // Bound consumer buffers. This assigns EVERY partition and seeks to the
+        // beginning, so the client holds a fetch buffer per partition: at 48
+        // partitions the defaults (1MB per partition, 50MB fetch.max.bytes)
+        // reserve more than the whole heap of a 512MB Fargate task and the
+        // validator dies with OutOfMemoryError inside KafkaConsumer.poll --
+        // which reads as "no output" and looks like a validation problem.
+        // The validator is streaming: it keeps one value per key, never the
+        // records, so small fetches cost nothing but a few more round trips.
+        Properties p = new Properties();
+        p.putAll(props);
+        p.putIfAbsent("max.partition.fetch.bytes", "262144");   // 256KB/partition
+        p.putIfAbsent("fetch.max.bytes", "8388608");            // 8MB total
+        p.putIfAbsent("max.poll.records", "2000");
+        try (KafkaConsumer<String, String> c = new KafkaConsumer<>(p)) {
             List<TopicPartition> tps = new ArrayList<>();
             List<PartitionInfo> pis = c.partitionsFor(topic);
             if (pis == null) return;
