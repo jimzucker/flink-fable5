@@ -90,6 +90,16 @@ public final class StreamValidator {
         long lagMs = params.getLong("validate.lag.ms", 2000L);
         Map<String, java.util.ArrayDeque<Object[]>> recent = new HashMap<>();
         long[] priceCount = {0};
+        // Phase 21: measure HOW STALE each market value is instead of only
+        // pass/fail against one threshold. In simple-numbers mode a symbol's
+        // price rises exactly 1 cent per tick, so
+        //     staleness_in_ticks = final_price - implied_price   (in cents)
+        // and multiplying by that symbol's mean inter-tick gap converts it to
+        // milliseconds. That needs only first/last timestamp and a count per
+        // symbol -- O(symbols) memory, no per-tick retention, so it cannot
+        // reproduce the OOM that killed two earlier runs.
+        Map<String, Long> firstTs = new HashMap<>();
+        Map<String, Long> tickCount = new HashMap<>();
 
         drain(props, params.get("topic.prices", "prices"), idleMs, (k, v) -> {
             Price p = JsonUtil.fromJson(v, Price.class);
@@ -103,6 +113,8 @@ public final class StreamValidator {
             }
             pmin.merge(p.symbol, px, (a, b) -> a.compareTo(b) <= 0 ? a : b);
             pmax.merge(p.symbol, px, (a, b) -> a.compareTo(b) >= 0 ? a : b);
+            firstTs.merge(p.symbol, p.eventTime, Math::min);
+            tickCount.merge(p.symbol, 1L, Long::sum);
             java.util.ArrayDeque<Object[]> dq =
                     recent.computeIfAbsent(p.symbol, x -> new java.util.ArrayDeque<>());
             dq.addLast(new Object[]{p.eventTime, px});
@@ -147,6 +159,9 @@ public final class StreamValidator {
         }
         check("completeness sum(accounts)==ticker", bad == 0, rolled.size() + " tickers, " + bad + " disagree");
 
+        staleness("MV by account", outMvAcct, posAcct, true, latest, firstTs, latestTs, tickCount);
+        staleness("MV by ticker ", outMvTkr, posTicker, false, latest, firstTs, latestTs, tickCount);
+
         Map<String, BigDecimal> wmin = new HashMap<>();
         Map<String, BigDecimal> wmax = new HashMap<>();
         for (Map.Entry<String, java.util.ArrayDeque<Object[]>> e : recent.entrySet()) {
@@ -169,6 +184,54 @@ public final class StreamValidator {
                 ? "VALIDATION PASSED — all six checks"
                 : "VALIDATION FAILED — " + failures + " check(s)");
         System.exit(failures == 0 ? 0 : 1);
+    }
+
+    /**
+     * Phase 21: report the staleness DISTRIBUTION of published market values.
+     *
+     * Answers "is SQL wrong, or just late?" without picking a threshold. Prices
+     * rise 1 cent per tick in simple-numbers mode, so the gap between the final
+     * price and the price a market value actually used is a tick count, which
+     * converts to milliseconds via that symbol's mean inter-tick gap.
+     */
+    private static void staleness(String label, Map<String, String> out,
+                                  Map<String, Long> pos, boolean acctKey,
+                                  Map<String, BigDecimal> latest,
+                                  Map<String, Long> firstTs, Map<String, Long> lastTs,
+                                  Map<String, Long> ticks) {
+        java.util.List<Double> ms = new java.util.ArrayList<>();
+        int exact = 0;
+        for (Map.Entry<String, String> e : out.entrySet()) {
+            String key = e.getKey();
+            String sym = acctKey && key.indexOf('|') >= 0
+                    ? key.substring(key.indexOf('|') + 1) : key;
+            Long qty = pos.get(key);
+            BigDecimal fin = latest.get(sym);
+            Long f = firstTs.get(sym), l = lastTs.get(sym), n = ticks.get(sym);
+            if (qty == null || qty == 0 || fin == null || f == null || n == null || n < 2) continue;
+            BigDecimal got = new BigDecimal(strField(e.getValue(), "mv"));
+            BigDecimal implied = got.divide(BigDecimal.valueOf(qty), 6, java.math.RoundingMode.HALF_UP);
+            double cents = fin.subtract(implied).doubleValue() * 100.0;   // 1 cent == 1 tick
+            if (Math.abs(cents) < 0.5) { exact++; ms.add(0.0); continue; }
+            double msPerTick = (double) (l - f) / (double) (n - 1);
+            ms.add(Math.max(0.0, cents) * msPerTick);
+        }
+        if (ms.isEmpty()) { System.out.println("  " + label + " staleness: no comparable keys"); return; }
+        java.util.Collections.sort(ms);
+        System.out.printf("  %s staleness: n=%d exact=%d (%.0f%%)  p50=%.0fms p90=%.0fms p99=%.0fms max=%.0fms%n",
+                label, ms.size(), exact, 100.0 * exact / ms.size(),
+                pct(ms, 50), pct(ms, 90), pct(ms, 99), ms.get(ms.size() - 1));
+        for (int t : new int[]{2000, 5000, 10000}) {
+            long over = ms.stream().filter(x -> x > t).count();
+            System.out.printf("      beyond %5dms: %d of %d (%.1f%%)%n", t, over, ms.size(),
+                    100.0 * over / ms.size());
+        }
+    }
+
+    private static double pct(java.util.List<Double> sorted, int p) {
+        if (sorted.isEmpty()) return 0;
+        int i = (int) Math.ceil(p / 100.0 * sorted.size()) - 1;
+        return sorted.get(Math.max(0, Math.min(i, sorted.size() - 1)));
     }
 
     /** returns {wrong, lag} */
