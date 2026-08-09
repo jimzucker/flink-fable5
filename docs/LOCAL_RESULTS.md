@@ -14,6 +14,26 @@ partitions, no MSK.
 
 ---
 
+## Correctness status — what is right and what is not
+
+| | status |
+|---|---|
+| The final price we published for each symbol | **correct** |
+| The final position for each key | **correct** — 0 mismatched, every run |
+| The final market value using that final price | **stale** — computed from an earlier tick |
+| Ordering of positions delivered to consumers | **correct** — 0 violations |
+| Ordering of prices used to compute output | **correct** — 0 violations |
+| Consumers left holding a superseded value | **none** — 0 keys end stale |
+
+Only one row fails, and only with conflation ON. Nothing is corrupted or lost:
+the price stream is complete and correct, positions are exact, and every
+published record is in order. The market-value stream simply stops updating a
+couple of seconds before the last price arrives.
+
+With conflation OFF every row above is correct, including at 400,000 prices.
+
+---
+
 ## Dense — the realistic shape (100 symbols @ 2,000 prices/s)
 
 Same columns as the AWS status. Local has no KPUs or partition billing, so those
