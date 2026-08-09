@@ -77,14 +77,18 @@ def main():
         if mean_bp > 20 and mean_busy < 50:
             verdict = ("BLOCKED — idle but backpressured. NOT over-provisioned; "
                        "a downstream stage is the limit. Cutting KPUs will not help.")
-        elif mean_busy >= 85:
+        elif mean_busy >= 80:
             verdict = ("OVER-UTILIZED — saturated. More parallelism should convert "
                        "to throughput.")
-        elif mean_busy < 40:
+        elif mean_busy < 65:
+            # 65% is the honest line: below it you are paying for slots that sit
+            # idle. An earlier 40% cutoff called 44% busy "OK", which meant 56%
+            # of purchased compute idle was being reported as healthy.
             verdict = (f"UNDER-UTILIZED — {100-mean_busy:.0f}% of paid compute idle. "
                        f"Reduce parallelism/KPU.")
         else:
             verdict = "OK — reasonably matched to load."
+        print(f"  effective   : ~{mean_busy/100:.2f} x parallelism actually working")
         print(f"  VERDICT     : {verdict}")
     else:
         print("  no operator data (job not running?)")
