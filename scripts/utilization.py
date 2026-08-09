@@ -25,7 +25,10 @@ MSK_EGRESS_LIMIT_MBPS = 400.0
 
 
 def query(ns, metric, dim_key, stat, minutes):
-    expr = (f"SEARCH('{{{ns},{dim_key}}} MetricName=\"{metric}\"', '{stat}')")
+    # Dimension names containing spaces MUST be quoted inside the SEARCH
+    # schema ("Cluster Name"), or CloudWatch rejects the whole expression.
+    dims = ",".join(f'"{d}"' if " " in d else d for d in dim_key.split(","))
+    expr = (f"SEARCH('{{{ns},{dims}}} MetricName=\"{metric}\"', '{stat}')")
     end = datetime.now(timezone.utc)
     start = end - timedelta(minutes=minutes)
     r = subprocess.run(
