@@ -1,0 +1,51 @@
+PHASE 21 — is SQL's market value correct, or just late?
+=======================================================
+User: "lets do a new phase to analyze correctness of SQL"
+
+CARRIED IN FROM PHASE 20
+  DataStream (AWS): 945/1000 market values EXACT. Correct.
+  SQL (AWS):          0/1000 exact. ~93% inside a 2,000ms lag tolerance,
+                      ~3% outside it. Same on both materializer settings.
+
+  Ruled out: the SinkUpsertMaterializer. Removing it gave 20/1000 wrong; the
+  control WITH it gave 30/1000 -- worse. The earlier causal claim was made from
+  a single arm before its control existed, and was retracted.
+
+THE QUESTION
+  Stale (a correctness defect) or merely late (a latency characteristic)?
+  Neither is currently established.
+
+METHOD -- measure, do not sweep
+  A 2s/5s/10s threshold sweep only reveals which arbitrary line the failures sit
+  behind. Instead the validator will report HOW STALE each market value is, in
+  milliseconds:
+
+     staleness = final_price_event_time - implied_price_event_time
+     implied_price = mv / position
+
+  Report p50/p90/p99/max plus counts beyond several thresholds. One run then
+  answers the threshold question for EVERY threshold, and turns a binary
+  pass/fail into a measurement. DataStream gets graded on the same axis, so
+  "945/1000 exact" gains a tail figure.
+
+PRE-DECLARED INTERPRETATION (recorded BEFORE any run)
+  p99 < 2,000ms .................. SQL is correct; the 2s threshold was too tight
+  p99 2,000-10,000ms, mass near
+    the conflate/idle interval ... late, not wrong -- report as latency + number
+  tail beyond 10,000ms or
+    unbounded growth ............. genuine correctness defect; chase mechanism
+  failures correlate with low
+    tick counts .................. idle-key starvation; fix with periodic re-emit
+
+LEADING HYPOTHESIS (H1) -- end-of-run truncation, an ARTIFACT
+  The generator stops, so a symbol's last prices sit in a 250ms tumble window
+  that never closes -- nothing arrives to advance the watermark past it. The
+  final MV then reflects the second-to-last price permanently. DataStream has no
+  windowing on that path, which fits the observed asymmetry exactly. If true,
+  this is a measurement artifact of bounded runs, not a production defect.
+
+COST DISCIPLINE
+  One small run: 200 symbols, 16 partitions, P=8. Correctness needs distinct
+  keys, not scale. ~$2. Validator change exercised on the local Docker rig
+  first; only the measurement needs AWS. Record to the ledger as it lands and
+  tear down unconditionally.
