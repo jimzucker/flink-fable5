@@ -1,0 +1,64 @@
+Step 1 sweep: one variable at a time, 150s generation each
+
+########## A: conflate=250 emit=0  (matches AWS) ##########
+  pipeline.mode=sql
+  sql.price.conflate.ms=250
+  sql.price.salt.factor=8
+  mv.emit.interval.ms=0
+  position.emit.interval.ms=0
+  job=RUNNING generating 150s
+    order position-by-account-ticker   records=1860 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=1860 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=10270 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=3505 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=1564ms p90=3087ms p99=3096ms max=3096ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=1564ms p90=3087ms p99=3096ms max=3096ms
+  VALIDATION FAILED — 2 check(s)
+
+########## B: conflate=250 emit=1000  (local defaults) ##########
+  pipeline.mode=sql
+  sql.price.conflate.ms=250
+  sql.price.salt.factor=8
+  mv.emit.interval.ms=1000
+  position.emit.interval.ms=500
+  job=RUNNING generating 150s
+    order position-by-account-ticker   records=1681 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=1231 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=7858 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=1758 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=1564ms p90=3086ms p99=3095ms max=3095ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=1564ms p90=3086ms p99=3095ms max=3095ms
+  VALIDATION FAILED — 2 check(s)
+
+########## C: conflate=0 emit=0  (no price window) ##########
+  pipeline.mode=sql
+  sql.price.salt.factor=8
+  sql.price.conflate.ms=0
+  mv.emit.interval.ms=0
+  position.emit.interval.ms=0
+  job=RUNNING generating 150s
+    order position-by-account-ticker   records=1860 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=1860 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=20590 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=5670 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=50 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+    MV by ticker  staleness: n=10 exact=10 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  VALIDATION PASSED — all six checks
+
+########## D: conflate=250 emit=0 idle=500 ##########
+  pipeline.mode=sql
+  sql.price.salt.factor=8
+  mv.emit.interval.ms=0
+  position.emit.interval.ms=0
+  sql.price.conflate.ms=250
+  sql.source.idle.timeout.ms=500
+  job=RUNNING generating 150s
+    order position-by-account-ticker   records=1860 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=1860 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=7663 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=2967 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=2542ms p90=3809ms p99=4112ms max=4112ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=2542ms p90=3809ms p99=4112ms max=4112ms
+  VALIDATION FAILED — 2 check(s)
+
+SWEEP DONE
