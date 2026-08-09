@@ -1,0 +1,5 @@
+TOTALS sql-P40  grand=400 rec/s
+    Source:_prices_src_17_____Calc_18_____WindowTableFun avg=     0.0/subtask x  31 =          0/s
+    Source:_trades_src_1_____Calc_2_                     avg=    12.9/subtask x  31 =        400/s
+  calibration: trades total 400/s is BELOW the 999,999/s generated (100% under)
+  -> falling behind on the trades path, or the multiplier is wrong. Investigate before using.
