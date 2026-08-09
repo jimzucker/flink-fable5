@@ -1,0 +1,18 @@
+LOCAL ISOLATION — the staleness is the price conflation setting
+Docker rig, 10 symbols, simple numbers, one variable changed.
+
+sql.price.conflate.ms DISABLED (and no salt):
+  MV by account staleness: n=50 exact=50 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  MV by ticker  staleness: n=10 exact=10 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  VALIDATION PASSED - all six checks
+
+sql.price.conflate.ms=250 + sql.price.salt.factor=8:
+  MV by account staleness: n=50 exact=10 (20%)  p50=1482ms p90=3464ms p99=4005ms max=4005ms
+      beyond  2000ms: 25 of 50 (50.0%)
+      beyond  5000ms:  0 of 50 (0.0%)
+      beyond 10000ms:  0 of 50 (0.0%)
+  MV by ticker  staleness: n=10 exact=2 (20%)   p50=1482ms p90=3464ms p99=4005ms max=4005ms
+  VALIDATION FAILED - 2 checks
+
+Same job, same data, same 10 symbols, no salted feed, no scale, no materializer
+difference. The single variable is conflation.

@@ -1,0 +1,1 @@
+validate: subnets=subnet-05271d7539bbcb3ec,subnet-024b1351ba35c31b6 sg=sg-072ea501e5613d922 (from flink-fable5-generator)
