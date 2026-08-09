@@ -23,7 +23,7 @@ produced the retractions.
 | SQL P=20 | **6,106** | fixed backlog, app stopped during build |
 | SQL P=40 | **INVALID** | drained the 3-min backlog during the 3-min settle; sampled an idle pipeline (prices 0/s) |
 | DataStream P=20 | **12,487** | fixed backlog |
-| DataStream P=40 | *pending* | |
+| DataStream P=40 | **INVALID** | 0 rec/s — fastest config, backlog fully drained before sampling began |
 
 ## Superseded (kept only to show what was replaced and why)
 

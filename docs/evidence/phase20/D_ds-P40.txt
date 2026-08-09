@@ -1,0 +1,3 @@
+TOTALS ds-P40  grand=0 rec/s
+    Source:_prices_source____parse_price                 avg=     0.0/subtask x  21 =          0/s
+    Source:_trades_source____parse_trade                 avg=     0.0/subtask x  21 =          0/s
