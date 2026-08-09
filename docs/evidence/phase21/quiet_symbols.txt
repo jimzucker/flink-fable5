@@ -1,0 +1,42 @@
+Step 2: quiet-symbol test. 10 symbols for 120s, then only 3 tick for 120s.
+Symbols 3-9 are silent for the final 120s -- a thinly-traded ticker mid-session.
+
+########## conflation ON (250ms) ##########
+  sql.price.conflate.ms=250
+  generator.tickers=10
+  job=RUNNING  phase 1: all 10 symbols ticking for 120s
+  phase 2: symbols 3-9 SILENT, 0-2 keep ticking for 120s
+    order position-by-account-ticker   records=2720 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=2720 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=11612 keys=50  as_of-backwards=0  price-backwards=15  keys ending stale=0
+    order mv-by-ticker                 records=4433 keys=10  as_of-backwards=0  price-backwards=3  keys ending stale=0
+    MV by account staleness: n=50 exact=25 (50%)  p50=0ms p90=3625ms p99=4340ms max=4340ms
+        beyond  2000ms: 15 of 50 (30.0%)
+        beyond  5000ms: 0 of 50 (0.0%)
+        beyond 10000ms: 0 of 50 (0.0%)
+    MV by ticker  staleness: n=10 exact=5 (50%)  p50=0ms p90=3625ms p99=4340ms max=4340ms
+        beyond  2000ms: 3 of 10 (30.0%)
+        beyond  5000ms: 0 of 10 (0.0%)
+        beyond 10000ms: 0 of 10 (0.0%)
+  VALIDATION FAILED — 2 check(s)
+
+########## conflation OFF (control) ##########
+  sql.price.conflate.ms=0
+  generator.tickers=10
+  job=RUNNING  phase 1: all 10 symbols ticking for 120s
+  phase 2: symbols 3-9 SILENT, 0-2 keep ticking for 120s
+    order position-by-account-ticker   records=2720 keys=50  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=2720 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=30568 keys=50  as_of-backwards=0  price-backwards=15  keys ending stale=0
+    order mv-by-ticker                 records=8287 keys=10  as_of-backwards=0  price-backwards=3  keys ending stale=0
+    MV by account staleness: n=50 exact=50 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 50 (0.0%)
+        beyond  5000ms: 0 of 50 (0.0%)
+        beyond 10000ms: 0 of 50 (0.0%)
+    MV by ticker  staleness: n=10 exact=10 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 10 (0.0%)
+        beyond  5000ms: 0 of 10 (0.0%)
+        beyond 10000ms: 0 of 10 (0.0%)
+  VALIDATION PASSED — all six checks
+
+QUIET TEST DONE
