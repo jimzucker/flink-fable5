@@ -1,0 +1,34 @@
+DENSE: 100 symbols @ 2,000 prices/s (~5 ticks per symbol per 250ms window)
+Prediction: staleness should now TRACK window size, unlike the sparse run.
+
+########## dense, window = 250 ms ##########
+  job=RUNNING  100 symbols @ 2000 prices/s for 150s
+  streamed: trades=40000 prices=400000 symbols=100
+    order mv-by-ticker                 records=56073 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=0 (0%)  p50=1968ms p90=2370ms p99=2622ms max=2742ms
+        beyond  2000ms: 225 of 500 (45.0%)
+    MV by ticker  staleness: n=100 exact=0 (0%)  p50=1968ms p90=2370ms p99=2622ms max=2742ms
+        beyond  2000ms: 45 of 100 (45.0%)
+  VALIDATION FAILED — 2 check(s)
+
+########## dense, window = 100 ms ##########
+  job=RUNNING  100 symbols @ 2000 prices/s for 150s
+  streamed: trades=40200 prices=402000 symbols=100
+    order mv-by-ticker                 records=57633 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=0 (0%)  p50=6295ms p90=7379ms p99=7951ms max=8275ms
+        beyond  2000ms: 500 of 500 (100.0%)
+    MV by ticker  staleness: n=100 exact=0 (0%)  p50=6295ms p90=7379ms p99=7951ms max=8275ms
+        beyond  2000ms: 100 of 100 (100.0%)
+  VALIDATION FAILED — 2 check(s)
+
+########## dense, window = 0 ms ##########
+  job=RUNNING  100 symbols @ 2000 prices/s for 150s
+  streamed: trades=40200 prices=402000 symbols=100
+    order mv-by-ticker                 records=439623 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+  VALIDATION PASSED — all six checks
+
+DENSE TEST DONE

@@ -1,0 +1,25 @@
+Window-size test. Prediction: staleness will NOT drop proportionally,
+because watermark lag dominates at sparse tick rates. Volume should rise.
+
+########## tumbling window = 250 ms ##########
+  job=RUNNING generating 150s
+    order mv-by-ticker                 records=3503 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=1563ms p90=3085ms p99=3093ms max=3093ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=1563ms p90=3085ms p99=3093ms max=3093ms
+  VALIDATION FAILED — 2 check(s)
+
+########## tumbling window = 100 ms ##########
+  job=RUNNING generating 150s
+    order mv-by-ticker                 records=3537 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=1525ms p90=2598ms p99=4603ms max=4603ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=1525ms p90=2598ms p99=4603ms max=4603ms
+  VALIDATION FAILED — 2 check(s)
+
+########## tumbling window = 50 ms ##########
+  job=RUNNING generating 150s
+    order mv-by-ticker                 records=3546 keys=10  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=50 exact=0 (0%)  p50=1525ms p90=2598ms p99=4603ms max=4603ms
+    MV by ticker  staleness: n=10 exact=0 (0%)  p50=1525ms p90=2598ms p99=4603ms max=4603ms
+  VALIDATION FAILED — 2 check(s)
+
+WINDOW TEST DONE
