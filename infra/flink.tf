@@ -91,8 +91,11 @@ resource "aws_kinesisanalyticsv2_application" "this" {
       }
       monitoring_configuration {
         configuration_type = "CUSTOM"
+        # OPERATOR metrics stay: they cost ~$0.01/day and are what make
+        # per-operator bottleneck profiling possible. LOG level is the expensive
+        # dial -- see var.flink_log_level.
         metrics_level      = "OPERATOR"
-        log_level          = "INFO"
+        log_level          = var.flink_log_level
       }
       checkpoint_configuration {
         configuration_type = "DEFAULT"

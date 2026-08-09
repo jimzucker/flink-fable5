@@ -123,6 +123,18 @@ variable "generator_price_per_symbol" {
   default     = false
 }
 
+variable "flink_log_level" {
+  description = <<-EOT
+    MSF application log level. INFO on a 40-subtask job across a dozen restarts
+    ingested 8.25 GB of CloudWatch Logs in a single day -- one day consumed the
+    entire 5 GB MONTHLY free tier and cost $2.36. WARN keeps failures and
+    restarts visible while dropping per-subtask INFO chatter.
+    Raise to INFO deliberately when debugging a specific job, not by default.
+  EOT
+  type    = string
+  default = "WARN"
+}
+
 variable "generator_cpu" {
   description = "Fargate CPU units for the generator (256 = 0.25 vCPU)"
   type        = number
