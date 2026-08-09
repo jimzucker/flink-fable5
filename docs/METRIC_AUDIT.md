@@ -61,21 +61,13 @@ broke.
 
 ## NEEDS RESOLUTION — a genuine conflict, not a metric artifact
 
-`PERF_RESULTS.md:49` reports that disabling the materializer moved throughput
-**20,086 -> 22,823/s, about +14%**. Phase 20 measured the same change as
-**+89%** (13,405 -> 25,387/s).
+`PERF_RESULTS.md:49` and Phase 20 disagree on what the materializer costs
+(+14% vs ~+89%). Moot in practice: removing it produces wrong market values,
+so neither figure describes a usable configuration. Do not quote either.
 
-Both are same-parallelism comparisons, so neither is corrupted by this bug. The
-conditions differ (cardinality, phase, rig), but a 14% vs 89% spread is too wide
-to wave through. One of them is measuring something the other is not, and until
-that is understood **neither number should be quoted as "the" cost of the
-materializer.**
-
-Also note `PERF_RESULTS.md` numbers (435k/s, 22,823/s @ P20, 51,159/s @ P40)
-came from the local Docker rig via Prometheus, not from CloudWatch — a different
-harness with a different aggregation. They are not contaminated by *this* bug,
-but they have never been cross-checked against a ground truth the way
-`phase20_totals.py` now is.
+Note `PERF_RESULTS.md` throughput numbers came from the local Docker rig via
+Prometheus, not CloudWatch, so they are unaffected by the per-subtask bug --
+but they have never been cross-checked against a ground truth.
 
 ---
 

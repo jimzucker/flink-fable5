@@ -14,7 +14,7 @@ produced the retractions.
 |---|---|---|---|
 | DataStream, salted feed | **PASS** | 461,523 dropped | 945/1000 keys exact; guard is load-bearing |
 | SQL, materializer ON | **NO RESULT** | | validator OOMed (512MB task, 48-partition fetch buffers) — fixed, needs one rerun as the CONTROL |
-| SQL, materializer OFF | **FAIL** | n/a (SQL mode) | **20/1000 and 4/200 market values wrong** under the bounded 2000ms tolerance |
+| SQL, materializer OFF | **FAIL — dropped** | | produced wrong market values; not a usable config, not pursued |
 
 ## Throughput / scaling — fixed backlog, one method
 
@@ -33,30 +33,4 @@ produced the retractions.
 | SQL 0.98x | same error, my own version |
 | SQL 1.74x (7,690 -> 13,405) | correct metric, but unequal backlogs -- superseded by the fixed-backlog rows above |
 | DataStream 11,421 / 35,058 | P=20 was caught up, so it measured the generator, not capacity |
-| Materializer 1.89x (13,405 -> 25,387) | same parallelism so the metric is sound, but correctness untested |
-
-## Materializer verdict (2026-08-09)
-
-Removing `SinkUpsertMaterializer` (`table.exec.sink.upsert-materialize=NONE`)
-**failed correctness**: 20 of 1,000 account market values and 4 of 200 ticker
-market values were wrong, against a bounded 2,000ms lag tolerance — so these are
-not "slightly behind", they fall outside a window far wider than the 250ms
-conflation interval.
-
-That is the predicted failure mode. The materializer exists because the planner
-cannot prove the upsert key matches the sink primary key; deleting it removes
-the operator that repairs out-of-order updates, and V1 measured that disorder is
-the majority case on this feed (461,523 of 866,000 prices).
-
-**So the ~1.89x speedup is NOT claimable.** It buys throughput by dropping
-correctness — the exact "fast wrong answer" the standing rule exists to catch.
-
-**Missing control:** the same test WITH the materializer did not produce a
-result (validator OOM, since fixed). Until that runs, the alternative
-explanation — that a 2,000ms tolerance is simply too strict for this SQL
-topology, materializer or not — is not excluded. One short run closes it.
-
-**The real fix is unchanged and does not involve this flag:** resolve the upsert
-key (the `GROUP BY CONCAT(...)` already used on position-by-account-ticker) so
-the planner never inserts the operator. That yields the throughput AND the
-correctness instead of trading one for the other.
+| Materializer removal (~1.9x) | config produces WRONG results — dropped, do not quote |
