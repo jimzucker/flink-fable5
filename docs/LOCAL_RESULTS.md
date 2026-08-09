@@ -14,13 +14,33 @@ partitions, no MSK.
 
 ---
 
-## Dense — the realistic shape (100 symbols @ 2,000 prices/s, P=4)
+## Dense — the realistic shape (100 symbols @ 2,000 prices/s)
+
+Same columns as the AWS status. Local has no KPUs or partition billing, so those
+read $0 / n/a — kept in place so the two tables line up.
+
+| Condition | rec/s | Parallelism | Utilization % | Total $/hr | Flink KPU | Flink $/hr | BackPressure | Kafka partitions | Kafka $/hr |
+|---|---|---|---|---|---|---|---|---|---|
+| SQL, conflation **off** | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+| SQL, conflation 250ms | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+| SQL, conflation 100ms | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+
+**`rec/s` here is the GENERATOR rate, not capacity.** The pipeline kept up in
+every condition — backpressure 0.0%, busy ~35% — so these runs never found a
+ceiling. The AWS figures are drain rates against a saturating backlog and measure
+something different. **Do not put the two in one table.**
+
+Utilization is measured from the JobManager REST backpressure endpoint
+(`scripts/local_utilization.py`), which reports busyRatio / backpressuredRatio
+per subtask — the local equivalent of MSF's busyTime / backPressuredTime.
+
+### What actually differs between those three conditions
 
 | Condition | Records published | Staleness p50 | Staleness max | Exact | Ordering violations | Result |
 |---|---|---|---|---|---|---|
-| SQL, conflation **off** | **439,623** | **0ms** | 0ms | **100%** | 0 | **PASS** |
-| SQL, conflation 250ms | 56,073 | 1,968ms | 2,742ms | 0% | 0 | FAIL |
-| SQL, conflation 100ms | 57,633 | 6,295ms | 8,275ms | 0% | 0 | FAIL |
+| conflation **off** | **439,623** | **0ms** | 0ms | **100%** | 0 | **PASS** |
+| conflation 250ms | 56,073 | 1,968ms | 2,742ms | 0% | 0 | FAIL |
+| conflation 100ms | 57,633 | 6,295ms | 8,275ms | 0% | 0 | FAIL |
 
 400,000 prices / 40,000 trades per run. TaskManager peaked at ~4.7% CPU and
 1.9 GB of 7.6 GB — the laptop was never the constraint.

@@ -1,0 +1,6 @@
+Candidate fix: conflate the OUTPUT (emit interval) instead of the INPUT (window).
+Dense: 100 symbols @ 2,000 prices/s, P=4.
+
+########## BASELINE input-conflation 250ms, emit 0 ##########
+  conflate=250ms  mv.emit.interval=0ms
+  job=RUNNING
