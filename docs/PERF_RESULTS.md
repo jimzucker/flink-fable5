@@ -1,5 +1,23 @@
 # Performance Results — the same trading pipeline on two clouds
 
+> **SUPERSEDED IN PLACES — see [PHASE20_RESULTS.md](PHASE20_RESULTS.md) and
+> [METRIC_AUDIT.md](METRIC_AUDIT.md) (2026-08-09).**
+>
+> Corrected by Phase 20, measured on a fixed backlog with a calibrated metric:
+>
+> | | final |
+> |---|---|
+> | DataStream (AWS) | 12,487 rec/s @ P=20 - 28,357 @ P=40 — **scales 2.27x** |
+> | SQL (AWS) | 6,106 rec/s @ P=20 - 10,363 @ P=40 — **scales 1.70x** |
+> | DataStream vs SQL | 2.05x faster at P=20, **2.74x at P=40** (not the 5.5x below) |
+> | AWS cost | **~$4.22/hr** all-in, MSK ~$3.01 of it (not $2.39/hr) |
+> | "SQL doesn't scale" | **RETRACTED** — both scale; the metric was per-subtask |
+>
+> The AWS-cheaper-on-TCO claim does not survive: MSK was priced at $0.75/hr
+> against an actual $3.01/hr under load, and Confluent's eCKU charge was never
+> measured.
+
+
 > # ⚠ SUPERSEDED
 >
 > **The performance numbers in this file are retired.** Several were measured

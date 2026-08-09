@@ -1,5 +1,23 @@
 # AWS Deployment Runbook
 
+> **SUPERSEDED IN PLACES — see [PHASE20_RESULTS.md](PHASE20_RESULTS.md) and
+> [METRIC_AUDIT.md](METRIC_AUDIT.md) (2026-08-09).**
+>
+> Corrected by Phase 20, measured on a fixed backlog with a calibrated metric:
+>
+> | | final |
+> |---|---|
+> | DataStream (AWS) | 12,487 rec/s @ P=20 - 28,357 @ P=40 — **scales 2.27x** |
+> | SQL (AWS) | 6,106 rec/s @ P=20 - 10,363 @ P=40 — **scales 1.70x** |
+> | DataStream vs SQL | 2.05x faster at P=20, **2.74x at P=40** (not the 5.5x below) |
+> | AWS cost | **~$4.22/hr** all-in, MSK ~$3.01 of it (not $2.39/hr) |
+> | "SQL doesn't scale" | **RETRACTED** — both scale; the metric was per-subtask |
+>
+> The AWS-cheaper-on-TCO claim does not survive: MSK was priced at $0.75/hr
+> against an actual $3.01/hr under load, and Confluent's eCKU charge was never
+> measured.
+
+
 Same jar as the laptop; every difference is configuration. Stack: **MSK
 Serverless** (Kafka, IAM auth) + **Amazon Managed Service for Apache Flink**
 (the pipeline, Flink 1.20 runtime) + **ECS Fargate** (the generator) +
@@ -148,9 +166,9 @@ cd infra && terraform destroy       # force_destroy on bucket/ECR handles conten
 
 ## Cost note (rough, us-east-1)
 
-MSF ~2 KPU ≈ $0.22/hr; MSK Serverless ≈ $0.75/hr cluster + usage; NAT ≈
+MSF ~2 KPU ≈ $0.22/hr; MSK Serverless base $0.75/hr BUT ~$3.01/hr measured under load (data transfer dominates: $14.35 of a $30 day); NAT ≈
 $0.045/hr; Fargate 0.25 vCPU ≈ $0.01/hr. **≈ $1/hr while running — destroy
 when not demoing.**
 
 Tuned floor config (the one in the scoreboard): 11 billed KPUs $1.21 + MSK
-cluster base $0.75 + 288 partition-hours $0.43 ≈ **$2.39/hr all-in**.
+cluster base $0.75 + partition-hours + DATA TRANSFER ≈ **$4.22/hr all-in** measured. The earlier $2.39/hr counted no data transfer.

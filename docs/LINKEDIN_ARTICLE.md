@@ -1,6 +1,8 @@
-> **Draft status:** the scaling claims in this article are retracted pending
-> re-measurement — see `docs/METRIC_AUDIT.md`. The DataStream-vs-SQL
-> throughput findings are unaffected. Do not publish as-is.
+> **Status:** scaling claims re-measured and corrected 2026-08-09 (Phase 20).
+> Final figures: DataStream 12,487 rec/s @ P=20 and 28,357 @ P=40 (2.27x);
+> SQL 6,106 and 10,363 (1.70x). Both scale. See `docs/PHASE20_RESULTS.md`.
+> One open item: SQL market-value staleness is unresolved, so avoid claiming
+> SQL correctness parity.
 
 # I built a production-grade Flink trading pipeline in one day, pairing with AI
 
@@ -94,23 +96,39 @@ through carefully. I tested it anyway, and it made it 2.66× faster. Same
 optimisation, opposite of my prediction. The measurement took twenty minutes;
 the argument would have shipped a version a third as fast.
 
-**Then there was the scaling claim I got to be wrong about twice.** I had
+**Then there was the scaling claim I got to be wrong about three times.** I
 published that one platform "doesn't scale." Then I found the ceiling was
-something I'd built into my own test rig, corrected it publicly, and published
-a scaling number instead. Then I measured what the machine actually *drew* —
-and it never used more than half of what it was allowed. There was no scaling
-either way. The real limit was that the business problem has ten symbols in it,
-and you cannot spread ten things across twenty workers. Neither platform was
-ever the constraint.
+something I'd built into my own rig, corrected it, and published a different
+number. Then I found the ceiling was the *measurement*: the metric I was reading
+reports a per-worker rate, so it silently divides by the exact thing I was
+varying. Under perfect scaling it would have sat flat. It was structurally
+incapable of showing scaling, and I'd been quoting it for two phases.
 
-**And the cheapest lesson in the project: 64% of the cloud bill wasn't the part
-I spent weeks tuning.** It was Kafka — the base charge and the per-partition
-fee. All that pipeline optimisation was working on the smaller half of the
-invoice.
+The number that finally survived a calibration check says the opposite of what I
+published. Both versions scale. The Java one converts extra compute better —
+2.27x throughput for 2x the workers, against 1.70x for SQL — and the gap widens
+as you add machines: the Java version is about twice as fast at twenty workers
+and closer to three times as fast at forty.
+
+What tipped me off wasn't a hunch. The generator emits a known, fixed number of
+records per second. When I made the metric reproduce that number, it only worked
+if I multiplied by the worker count. One arithmetic check against a value I
+already knew, and two phases of confident conclusions fell over.
+
+**And the cheapest lesson in the project: three quarters of the cloud bill
+wasn't the part I spent weeks tuning.** It was Kafka — and within Kafka, it
+wasn't the base charge or the partitions either. It was **data transfer**, at
+roughly half the Kafka line. I had the Kafka cost in my notes at $0.75/hr; the
+actual bill under load was $3.01/hr, because I'd only counted the part that
+shows up as a fixed rate. All that pipeline tuning was optimising the compute
+line, which is about a fifth of the invoice.
 
 **One thing I'd stress about all of this: the choice that mattered was never
-which cloud.** I ran the SQL version on both, and it behaved the same way on
-each — same rough speed, same failure to scale. I ran both versions on the *same*
+which cloud.** I ran the SQL version on both and it behaved much the same on
+each. The one real platform difference isn't speed: on one cloud I could buy
+more capacity and the query used it; on the other the pool quietly refused to
+draw past a ceiling no matter what I set. That difference is about whether you
+can spend your way out of a problem, not how fast the SQL runs. I ran both versions on the *same*
 cloud, and the difference was large. The variable was the API, not the vendor.
 The cloud differences are real but they're about capability and billing, not
 speed: one can express a rate limit the other can't, one warns you when your
@@ -166,34 +184,41 @@ living: when it starts falling behind, can you just buy your way out?**
 For the Java version, yes — double the workers, get roughly double the work.
 That's the whole promise of this kind of system.
 
-For the SQL version, no. On one cloud I doubled the compute and measured
-seventeen percent more throughput — for eighty-three percent more money. And
-seventeen percent is inside this system's normal run-to-run wobble, so the
-honest answer is closer to "nothing". I'd set the bar beforehand at sixty
-percent before I'd call it real, precisely so I couldn't talk myself into it
-afterwards.
+For the SQL version, also yes — just less of it. Double the workers, get about
+1.7x the work, against the Java version's 2.27x. I had published that it didn't
+scale at all. That was wrong, and it was wrong because of the measurement, not
+the engine.
 
-On the other cloud I couldn't even spend the money. I raised the ceiling from
-ten units to twenty, and the platform quietly kept drawing ten. It decided the
-query didn't need more, and there was no argument to be had.
+The correction is worth stating plainly because I'd built a whole argument on
+top of it. I'd set a bar beforehand — sixty percent improvement before I'd call
+scaling real — specifically so I couldn't talk myself into a weak result
+afterwards. The bar was fine. The measurement feeding it was broken, and a
+threshold applied to a broken number is just a confident way to be wrong. When I
+re-measured properly, SQL cleared the bar it had supposedly failed.
 
-**So neither one scaled.** That's the finding, and I want to be careful not to
-dress it up as a contrast. Seventeen percent isn't a weaker kind of scaling —
-it's a number I can't distinguish from zero. One cloud wouldn't sell me the
-capacity and the other sold it and delivered nothing much; the outcome was the
-same both times. If anything, being prevented from spending the money is the
-better of the two.
+On the other cloud I still couldn't spend the money. I raised the ceiling from
+ten units to twenty and the platform quietly kept drawing ten. That one is real,
+and it's the only genuine failure to scale left in the project. I still don't
+know why, and I'm not going to guess in public a fourth time — there's a specific
+test that would answer it, and until I've run it, "I don't know" is the whole
+finding.
 
 **That reframed the whole comparison for me.** I'd been treating the Java-vs-SQL
-gap as a speed difference — Java is a few times faster per record. The bigger
-difference is that Java turns extra hardware into extra throughput and this SQL
-doesn't. Speed you can live with. Not being able to grow is a different kind of
-problem, and it's invisible if you only ever test at one size.
+gap as a speed difference — Java is a couple of times faster per record. The
+sharper difference is that Java turns extra hardware into extra throughput more
+efficiently, so the gap grows as you scale up: about 2x at twenty workers, closer
+to 3x at forty. Speed at one size you can live with. A gap that widens as you
+grow is a different kind of problem, and it's invisible if you only ever test at
+one size.
 
-The reason is unglamorous: extra workers only help if the work can be split
-among them. Parts of this query can't be — a given stock's numbers have to be
-added up in one place. So the new workers sit idle while the old ones do exactly
-what they did before.
+The reason is unglamorous, and it isn't the one I'd assumed. I had been blaming
+skew — one hot stock landing on one worker. When I finally measured each stage
+separately, the SQL side showed nothing of the kind: every worker in the heavy
+stages was equally busy, all pinned near a hundred percent. That's a plain
+capacity limit, which is exactly why adding workers *does* help it.
+
+Skew turned out to be the Java side's problem, not SQL's. I'd profiled one
+engine and quietly assumed the answer transferred.
 
 **Before any of that, though, I had to admit I'd never checked the answers.**
 Days of throughput numbers, and I had never once successfully run the test that

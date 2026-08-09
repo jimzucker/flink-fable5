@@ -276,7 +276,7 @@ table(s, [
 bullets(s, [
     ("Java is ~2x faster than SQL on identical hardware, load and logic - that gap is real and outside the noise", 0, GREEN, True),
     ("SQL runs the SAME on both clouds - same speed, same failure to scale. The API is the variable; the vendor is not", 0, GREEN, True),
-    ("Neither platform was the scaling limit - the business problem has ten symbols, and ten things do not spread across twenty workers", 0, DARK, False),
+    ("Both APIs scale. DataStream converts compute better - 2.27x vs 1.70x for 2x parallelism - and the gap widens with scale", 0, DARK, False),
     ("The deciding factor was not speed: do not update a screen faster than a human can read is one option on AWS SQL and has no construct in Confluent SQL", 0, ACCENT, True),
 ], y=6.0, size=14, gap=8)
 
@@ -333,12 +333,12 @@ title(s, "Flink SQL did not scale on either cloud", "Same load, same market, one
 table(s, [
     ["", "Knob doubled", "Throughput gained", "Cost"],
     ["DataStream (Java)", "parallelism", "converts extra hardware into throughput", "linear"],
-    ["SQL on AWS", "parallelism 20 -> 40", "+17% median - INSIDE the +/-25% noise band", "+83%"],
+    ["SQL on AWS", "parallelism 20 -> 40", "6,106 -> 10,363 rec/s = 1.70x", "+15% total cost"],
     ["SQL on Confluent", "pool cap 10 -> 20", "0% - platform kept drawing 10 units", "n/a"],
 ], 0.7, 2.0, 12.0, [3.0, 3.0, 4.5, 2.5], size=14)
 bullets(s, [
-    ("NEITHER scaled. +17% is inside the noise band - not a weaker form of scaling, a number indistinguishable from zero", 0, ACCENT, True),
-    ("Threshold was set BEFORE the run: >=1.6x genuine, 1.2-1.6x partial, <1.2x none. Median landed at 1.17x", 0, DARK, False),
+    ("DataStream 2.27x vs SQL 1.70x. Both scale; DataStream converts compute better and the gap WIDENS: 2.05x faster at P=20, 2.74x at P=40", 0, ACCENT, True),
+    ("Earlier 1.17x was a metric artifact - CloudWatch reports PER-SUBTASK, dividing by the variable under test. Retracted; re-measured on fixed backlogs", 0, DARK, False),
     ("Extra workers only help if the work can be split - a stock's numbers must be added up in one place, so the new workers idle", 0, DARK, False),
     ("The Java advantage is not mainly SPEED, it is that Java converts extra hardware into throughput and this SQL does not", 0, GREEN, True),
     ("Speed you can live with. Not being able to grow is a different problem - and invisible if you only test at one size", 0, GREEN, True),
