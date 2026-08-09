@@ -20,7 +20,7 @@ produced the retractions.
 
 | condition | total rec/s | notes |
 |---|---|---|
-| SQL P=20 | *pending* | |
+| SQL P=20 | **6,106** | fixed backlog, app stopped during build |
 | SQL P=40 | *pending* | |
 | DataStream P=20 | *pending* | |
 | DataStream P=40 | *pending* | |

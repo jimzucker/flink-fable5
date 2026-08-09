@@ -1,0 +1,5 @@
+TOTALS sql-P20  grand=6,106 rec/s
+    Source:_prices_src_17_____Calc_18_____WindowTableFun avg=   150.5/subtask x  20 =      3,009/s
+    Source:_trades_src_1_____Calc_2_                     avg=   154.8/subtask x  20 =      3,096/s
+  calibration: trades total 3,096/s is BELOW the 999,999/s generated (100% under)
+  -> falling behind on the trades path, or the multiplier is wrong. Investigate before using.
