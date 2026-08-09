@@ -23,7 +23,7 @@ produced the retractions.
 | SQL P=20 | **6,106** | fixed backlog, app stopped during build |
 | SQL P=40 | **10,363** | rerun w/ 8-min backlog, sampled mid-drain -> **1.70x vs P=20** |
 | DataStream P=20 | **12,487** | fixed backlog |
-| DataStream P=40 | **INVALID** | 0 rec/s — fastest config, backlog fully drained before sampling began |
+| DataStream P=40 | **28,357** | rerun w/ 8-min backlog -> **2.27x vs P=20** |
 
 ## Superseded (kept only to show what was replaced and why)
 
@@ -77,3 +77,37 @@ threshold. A tolerance sweep (2s / 5s / 10s) would separate them, and needs no
 new infrastructure beyond one run. Until then, neither "SQL is incorrect" nor
 "SQL is correct" is established — only that SQL lags materially more than
 DataStream.
+
+## Scaling result (2026-08-09) — DataStream converts parallelism better
+
+| API | P=20 | P=40 | scaling |
+|---|---|---|---|
+| **DataStream (AWS)** | 12,487 | 28,357 | **2.27x** |
+| **SQL (AWS)** | 6,106 | 10,363 | **1.70x** |
+
+Same feed, same fixed-backlog method, same cost per rung ($3.67 -> $4.22/hr).
+
+**Both scale. DataStream scales better**, and the gap WIDENS with parallelism:
+2.05x faster at P=20, **2.74x faster at P=40**.
+
+DataStream's 2.27x is superlinear, which normally signals a confound. Here it is
+consistent with the utilization data: at P=20 it ran at 35% busy, so P=40
+relieved a constraint rather than adding pure capacity. Treat "better than
+linear" as approximate; the DIRECTION is solid.
+
+**Utilization at every rung says both are over-provisioned:**
+
+| API | P | busy | bp | effective slots |
+|---|---|---|---|---|
+| DataStream | 20 | 35.3% | 4.0% | ~7 of 20 |
+| DataStream | 40 | 17.4% | 4.3% | ~7 of 40 |
+| SQL | 20 | 44.3% | 14.9% | ~9 of 20 |
+| SQL | 40 | 31.1% | 1.7% | ~12 of 40 |
+
+DataStream puts ~7 slots to work at BOTH 20 and 40 — it got 2.27x more
+throughput from the same effective compute, so the gain came from relieving a
+constraint, not from using more capacity. Neither engine gets near the 60-70%
+target; every rung here is over-provisioned for this load.
+
+Supersedes the Phase 19 claim that SQL fails to scale, and the earlier Phase 20
+figure of 1.74x measured under live load.
