@@ -307,3 +307,36 @@ inconsistency and confirmed by V3 one condition later.
 CONSEQUENCE: the 1.89x materializer result remains UNCLAIMED. Whether removing
 the materializer is safe is still untested -- both attempts to test it used a
 check that could not fail.
+
+=============================================================================
+PHASE 20 FINAL — all planned tests complete (2026-08-09)
+=============================================================================
+| Condition        | rec/s  | P  | $/hr | busy  | bp    | effective |
+|------------------|--------|----|------|-------|-------|-----------|
+| DataStream (AWS) | 12,487 | 20 | 3.67 | 35.3% |  4.0% | ~7 of 20  |
+| DataStream (AWS) | 28,357 | 40 | 4.22 | 17.4% |  4.3% | ~7 of 40  |
+| SQL (AWS)        |  6,106 | 20 | 3.67 | 44.3% | 14.9% | ~9 of 20  |
+| SQL (AWS)        | 10,363 | 40 | 4.22 | 31.1% |  1.7% | ~12 of 40 |
+
+SCALING: DataStream 2.27x, SQL 1.70x. Both scale; DataStream converts compute
+better and the gap WIDENS -- 2.05x faster at P=20, 2.74x at P=40.
+
+CORRECTNESS: DataStream PASSES (945/1000 exact, 461,523 stale ticks rejected).
+SQL unresolved -- zero exact matches, ~3% tail outside a 2s tolerance. The
+materializer is NOT the cause; the control with it enabled failed by more.
+
+UTILIZATION: every rung under-utilized against a 60-70% target. DataStream puts
+~7 effective slots to work at BOTH 20 and 40, so its 2.27x came from relieving a
+constraint rather than using more capacity.
+
+FOUR OF MY OWN DEFECTS COST RUNS THIS PHASE, all findable before spending:
+ 1. per-subtask metric divided by parallelism -> inverted the scaling result
+ 2. unsaturated baseline -> measured the generator instead of the pipeline
+ 3. settle window longer than the drain -> sampled an idle pipeline (2 runs)
+ 4. bash function returned its loop's last-command status -> silent abort (1 run)
+Plus a validator OOM (512MB task, 48-partition fetch buffers) that surfaced only
+as "no output" until the runner was made to report container exit codes.
+
+NEXT PHASE: Confluent's ~10 CFU ceiling -- the only genuine scaling failure left.
+Decisive test still unrun: two concurrent statements on one pool. If total draw
+exceeds 10 CFU the limit is per-statement; if not, it is the pool or autoscaler.

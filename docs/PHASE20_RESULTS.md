@@ -11,6 +11,32 @@ finishes. Retractions and their scope: [METRIC_AUDIT.md](METRIC_AUDIT.md).
 
 ---
 
+## 0. Headline — both APIs scale, DataStream scales better
+
+Same feed, same fixed-backlog method, same cost per rung.
+
+| Condition | rec/s | Parallelism | Total $/hr | Flink busy | bp | Effective slots |
+|---|---|---|---|---|---|---|
+| **DataStream (AWS)** | 12,487 | 20 | 3.67 | 35.3% | 4.0% | ~7 of 20 |
+| **DataStream (AWS)** | 28,357 | 40 | 4.22 | 17.4% | 4.3% | ~7 of 40 |
+| **SQL (AWS)** | 6,106 | 20 | 3.67 | 44.3% | 14.9% | ~9 of 20 |
+| **SQL (AWS)** | 10,363 | 40 | 4.22 | 31.1% | 1.7% | ~12 of 40 |
+
+**Scaling: DataStream 2.27x, SQL 1.70x.** The gap widens with parallelism —
+DataStream is 2.05x faster at P=20 and **2.74x faster at P=40**. Buying compute
+helps a DataStream job more than it helps the equivalent SQL job.
+
+DataStream's 2.27x is superlinear and should be read as approximate: at P=20 it
+was only 35% busy, so P=40 relieved a constraint rather than adding usable
+capacity. It puts ~7 effective slots to work at BOTH rungs — 2.27x more
+throughput from the same working compute. The direction is solid; the exact
+multiple is not.
+
+**Every configuration is over-provisioned** against a 60-70% sizing target. The
+closest was SQL P=40 at ~12 of 40 slots working.
+
+---
+
 ## 1. The measurement was wrong
 
 AWS MSF publishes `numRecordsOutPerSecond` once per **subtask**. Read with
@@ -20,7 +46,7 @@ perfect linear scaling that metric stays flat; under real scaling it falls.
 
 | corrected | |
 |---|---|
-| SQL P=20 → P=40 | **1.74×** (was reported as 1.17×, then 0.98×) |
+| SQL P=20 → P=40 | **1.70×** final, fixed-backlog (reported as 1.17×, then 0.98×; 1.74× on an interim live-load method) |
 | per-record cost | **fell ~22%** (was reported as +29%) |
 
 Caught by calibrating against a known truth: the generator emits exactly 400
@@ -30,9 +56,10 @@ trades/s, and the metric only reproduced that when multiplied by subtask count.
 +17% throughput", and the article narrative built on them. Banners are in the
 affected documents.
 
-**Survives:** DataStream sustains 5.5× SQL, the gap widening with cardinality,
+**Survives:** the gap widening with cardinality,
 Confluent's 20,564 rec/s, and the 10-CFU ceiling — all same-parallelism or from
-a different metric.
+a different metric. (Phase 19's 5.5× DataStream advantage is superseded by the
+fixed-backlog measurement above: 2.05× at P=20, 2.74× at P=40.)
 
 ## 2. A real correctness bug, found and fixed
 
@@ -94,10 +121,17 @@ neither direction can be proven.
 Separately, MSF at `log_level=INFO` ingested 8.25 GB of CloudWatch Logs in one
 day — a single day of the monthly free tier. Now defaults to WARN.
 
-## 6. Pending
+## 6. Open
 
-* Four fixed-backlog scaling runs (SQL and DataStream, P=20 vs P=40) → ledger
-* One control run: SQL correctness with the current configuration
+* **SQL market-value correctness is unresolved.** SQL produces ZERO exact
+  matches: ~93% of keys land inside a 2,000ms lag tolerance and a ~3% tail falls
+  outside. DataStream on the same feed matched 945/1000 exactly. Removing the
+  upsert materializer was investigated and is NOT the cause — the control with it
+  enabled failed by a wider margin. A tolerance sweep (2s/5s/10s) would separate
+  genuine staleness from an over-strict threshold.
+* **Confluent's ~10 CFU ceiling** remains the only true scaling failure in the
+  project, and its decisive test — two concurrent statements on one pool — is
+  still unrun. That is the next phase.
 
 ## What carries forward
 
