@@ -45,11 +45,31 @@ TASK=$(aws ecs run-task --cluster "$CLUSTER" --task-definition flink-fable5-vali
          --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}" \
          --query 'tasks[0].taskArn' --output text)
 aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
-sleep 12
+# Report WHY the task ended before touching logs. A validator that dies on OOM
+# or a pull error otherwise reads as "no output", which is indistinguishable
+# from "ran fine but printed nothing" -- and the CloudWatch logs get destroyed
+# with the infra, so the evidence is gone by the time anyone looks.
+DESC=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
+        --query 'tasks[0].[lastStatus,stopCode,stoppedReason,containers[0].exitCode]' --output text)
+echo "validate: task ended -> $DESC"
+sleep 20
 ST=$(aws logs describe-log-streams --log-group-name /ecs/flink-fable5-generator \
        --order-by LastEventTime --descending --max-items 1 \
        --query 'logStreams[0].logStreamName' --output text | head -1)
-aws logs get-log-events --log-group-name /ecs/flink-fable5-generator --log-stream-name "$ST" \
-    --limit 40 --query 'events[].message' --output text | tr '\t' '\n' \
-  | grep -E "streamed:|published:|\[PASS\]|\[FAIL\]|VALIDATION" || {
-      echo "validate: no output — check task $TASK"; exit 1; }
+# Retry: the validator's stream can lag behind the task reaching STOPPED.
+for attempt in 1 2 3; do
+  OUT=$(aws logs get-log-events --log-group-name /ecs/flink-fable5-generator \
+          --log-stream-name "$ST" --limit 200 --query 'events[].message' \
+          --output text 2>/dev/null | tr '\t' '\n')
+  echo "$OUT" | grep -qE "streamed:|VALIDATION" && break
+  echo "validate: no parseable output yet (attempt $attempt), re-reading in 20s"
+  sleep 20
+  ST=$(aws logs describe-log-streams --log-group-name /ecs/flink-fable5-generator \
+         --order-by LastEventTime --descending --max-items 1 \
+         --query 'logStreams[0].logStreamName' --output text | head -1)
+done
+echo "$OUT" | grep -E "streamed:|published:|\[PASS\]|\[FAIL\]|VALIDATION|lag tolerance" || {
+      echo "validate: NO OUTPUT after 3 attempts — task $TASK"
+      echo "--- last 40 raw log lines for diagnosis ---"
+      echo "$OUT" | tail -40
+      exit 1; }
