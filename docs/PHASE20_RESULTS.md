@@ -15,12 +15,15 @@ finishes. Retractions and their scope: [METRIC_AUDIT.md](METRIC_AUDIT.md).
 
 Same feed, same fixed-backlog method, same cost per rung.
 
-| Condition | rec/s | Parallelism | Total $/hr | Flink busy | bp | Effective slots |
-|---|---|---|---|---|---|---|
-| **DataStream (AWS)** | 12,487 | 20 | 3.67 | 35.3% | 4.0% | ~7 of 20 |
-| **DataStream (AWS)** | 28,357 | 40 | 4.22 | 17.4% | 4.3% | ~7 of 40 |
-| **SQL (AWS)** | 6,106 | 20 | 3.67 | 44.3% | 14.9% | ~9 of 20 |
-| **SQL (AWS)** | 10,363 | 40 | 4.22 | 31.1% | 1.7% | ~12 of 40 |
+| Condition | rec/s | Parallelism | Utilization % | Total $/hr | Flink KPU | Flink $/hr | BackPressure | Kafka partitions | Kafka $/hr |
+|---|---|---|---|---|---|---|---|---|---|
+| **DataStream (AWS)** | 12,487 | 20 | 35.3% | 3.67 | 6 | 0.66 | 4.0% | 48 | 3.01 |
+| **DataStream (AWS)** | 28,357 | 40 | 17.4% | 4.22 | 11 | 1.21 | 4.3% | 48 | 3.01 |
+| **SQL (AWS)** | 6,106 | 20 | 44.3% | 3.67 | 6 | 0.66 | 14.9% | 48 | 3.01 |
+| **SQL (AWS)** | 10,363 | 40 | 31.1% | 4.22 | 11 | 1.21 | 1.7% | 48 | 3.01 |
+
+Effective slots working: ~7 of 20 and ~7 of 40 (DataStream), ~9 of 20 and ~12 of
+40 (SQL).
 
 **Scaling: DataStream 2.27x, SQL 1.70x.** The gap widens with parallelism —
 DataStream is 2.05x faster at P=20 and **2.74x faster at P=40**. Buying compute
