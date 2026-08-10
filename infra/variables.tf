@@ -58,7 +58,30 @@ variable "kafka_extra_props" {
 }
 
 variable "flink_extra_props" {
-  description = "Extra raw app properties for the Flink app (e.g. emit.interval.ms for conflated output emission)"
+  description = <<-EOT
+    Extra raw app properties for the Flink app.
+
+    CONFLATE THE OUTPUT, NEVER THE INPUT. The code defaults already do this and
+    they are correct -- do not override them without reading this:
+
+      sql.price.conflate.ms      default 0     input windowing OFF
+      mv.emit.interval.ms        default 1000  output rate limit ON
+      position.emit.interval.ms  default 500   output rate limit ON
+
+    Rate-limiting the OUTPUT publishes the newest value less often, so the
+    published value is always current. Windowing the INPUT (a tumbling window
+    over prices) discards the newest tick before it is used, so the published
+    value can NEVER be current.
+
+    Measured locally, 100 symbols @ 2,000 prices/s, identical 440k input:
+      conflate=250 + emit=0     55,389 published, p50 2,929ms stale, 0% exact
+      conflate=0   + emit=1000  18,386 published, 0ms stale,      100% exact
+    The output-conflated config wins on BOTH axes -- fewer writes and exact
+    values. There is no trade-off to tune here.
+
+    The Phase 20 benchmark scripts set conflate=250 AND emit=0 -- backwards on
+    both counts -- so every AWS SQL figure was measured on the dominated config.
+  EOT
   type        = map(string)
   default     = {}
 }
