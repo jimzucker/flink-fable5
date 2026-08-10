@@ -1,0 +1,15 @@
+DEFAULTS (recommended): conflate=0, mv.emit=1000ms, position.emit=500ms
+100 symbols @ 2,000 prices/s + 200 trades/s, P=4, 150s
+job=RUNNING
+UTIL no busy data
+streamed: trades=40200 prices=402000 symbols=100
+published: pos=500 posTkr=100 mv=500 mvTkr=100
+consumer-visible ordering (upsert topics, offset order == per-key order):
+  order position-by-account-ticker   records=32067 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order position-by-ticker           records=19094 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order mv-by-account-ticker         records=86486 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order mv-by-ticker                 records=19517 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+VALIDATION PASSED — all six checks
+IO COUNTS DONE

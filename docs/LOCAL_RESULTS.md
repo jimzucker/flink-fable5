@@ -14,6 +14,32 @@ partitions, no MSK.
 
 ---
 
+## Input vs output volume — defaults, 150s run
+
+100 symbols @ 2,000 prices/s + 200 trades/s, parallelism 4, on the recommended
+configuration (`sql.price.conflate.ms=0`, `mv.emit.interval.ms=1000`,
+`position.emit.interval.ms=500`).
+
+| | records | rate | keys |
+|---|---|---|---|
+| **IN — prices** | 402,000 | 2,680/s | 100 symbols |
+| **IN — trades** | 40,200 | 268/s | — |
+| **OUT — position by account+ticker** | 32,067 | 214/s | 500 |
+| **OUT — position by ticker** | 19,094 | 127/s | 100 |
+| **OUT — market value by account+ticker** | 86,486 | 577/s | 500 |
+| **OUT — market value by ticker** | 19,517 | 130/s | 100 |
+| **TOTAL in / out** | **442,200 / 157,164** | | |
+
+**~2.8:1 reduction.** Output volume is what drives Kafka write cost, so this is
+the number that maps to the bill -- not the input rate.
+
+Market-value-by-account is the largest output (86,486) because one price tick
+fans out to every account holding that ticker: 5 accounts x 100 symbols = 500
+keys, each updating on its own timer.
+
+Result on this run: **100% exact market values, 0ms staleness (p50/p90/p99/max),
+0 ordering violations on all four topics, all six checks PASS.**
+
 ## Correctness status
 
 Two configurations, and only one of them has a problem.
