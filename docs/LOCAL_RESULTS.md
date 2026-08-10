@@ -14,23 +14,28 @@ partitions, no MSK.
 
 ---
 
-## Correctness status — what is right and what is not
+## Correctness status
 
-| | status |
-|---|---|
-| The final price we published for each symbol | **correct** |
-| The final position for each key | **correct** — 0 mismatched, every run |
-| The final market value using that final price | **stale** — computed from an earlier tick |
-| Ordering of positions delivered to consumers | **correct** — 0 violations |
-| Ordering of prices used to compute output | **correct** — 0 violations |
-| Consumers left holding a superseded value | **none** — 0 keys end stale |
+Two configurations, and only one of them has a problem.
 
-Only one row fails, and only with conflation ON. Nothing is corrupted or lost:
-the price stream is complete and correct, positions are exact, and every
-published record is in order. The market-value stream simply stops updating a
-couple of seconds before the last price arrives.
+| | defaults / the fix<br>(output conflation) | input conflation 250ms<br>(what the AWS benchmarks ran) |
+|---|---|---|
+| Final price published per symbol | **correct** | correct |
+| Final position per key | **correct** (0 mismatched) | correct (0 mismatched) |
+| Final market value uses the final price | **correct — 100% exact** | **STALE — p50 ~2.9s** |
+| Ordering of positions to consumers | **correct** (0 violations) | correct (0 violations) |
+| Ordering of prices used for output | **correct** (0 violations) | correct (0 violations) |
+| Consumers left on a superseded value | **none** (0 keys end stale) | none (0 keys end stale) |
+| Six-check validation | **PASS** | FAIL (2 checks) |
 
-With conflation OFF every row above is correct, including at 400,000 prices.
+**On the code defaults there is no outstanding correctness defect.** Every row
+passes, including at 400,000 prices.
+
+The FAIL column exists only because the Phase 20 benchmark scripts overrode the
+defaults with `sql.price.conflate.ms=250` and `mv.emit.interval.ms=0` -- input
+windowing ON and output rate limiting OFF, backwards on both counts. That
+configuration is dominated: it publishes 3x MORE records than the defaults AND
+is stale. It should not be used, and the terraform variable now documents why.
 
 ---
 
