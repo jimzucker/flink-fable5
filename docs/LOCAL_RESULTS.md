@@ -131,3 +131,35 @@ reordered nothing.)*
 Window size is not a useful dial — smaller is strictly worse. Since Kafka data
 transfer is the largest cost line on AWS, that 8x is the real price of exact
 values.
+
+---
+
+## THE FIX — conflate the output, not the input
+
+Dense run, 100 symbols @ 2,000 prices/s, identical input (440,000 records) in
+every condition. `records` = rows PUBLISHED to mv-by-ticker.
+
+| config | output records | staleness p50 | exact | result |
+|---|---|---|---|---|
+| input conflation 250ms *(what we run today)* | 55,389 | 2,929ms | 0% | FAIL |
+| **output conflation 1000ms** | **18,386** | **0ms** | **100%** | **PASS** |
+| **output conflation 250ms** | 38,773 | **0ms** | **100%** | **PASS** |
+| unconflated | 439,623 | 0ms | 100% | PASS |
+
+**Both output-conflation settings beat the current config on BOTH axes** --
+fewer writes AND exact prices. This is not a trade-off; the current setting is
+simply dominated.
+
+**Why.** Rate-limiting the OUTPUT publishes the newest value less often, so the
+final value is always current. Windowing the INPUT discards the newest tick
+before it is ever used, so the final value can never be current. Same volume
+goal, opposite correctness outcome. It is exactly what the DataStream job does
+with processing-time timers -- which is why DataStream never showed staleness.
+
+**Recommended:** `sql.price.conflate.ms=0` with `mv.emit.interval.ms=1000`.
+3x fewer writes than today, and exact. Lower the interval toward 250ms if
+consumers need sub-second updates -- a pure freshness/volume dial with no
+correctness cost.
+
+Ordering stayed clean in every condition: as_of-backwards=0, price-backwards=0,
+keys-ending-stale=0.

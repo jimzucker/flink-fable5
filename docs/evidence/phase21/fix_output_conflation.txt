@@ -4,3 +4,25 @@ Dense: 100 symbols @ 2,000 prices/s, P=4.
 ########## BASELINE input-conflation 250ms, emit 0 ##########
   conflate=250ms  mv.emit.interval=0ms
   job=RUNNING
+    order mv-by-ticker                 records=55389 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=0 (0%)  p50=2929ms p90=3527ms p99=3901ms max=4080ms
+    MV by ticker  staleness: n=100 exact=0 (0%)  p50=2929ms p90=3527ms p99=3901ms max=4080ms
+  VALIDATION FAILED — 2 check(s)
+
+########## FIX     input-conflation OFF, emit 1000ms ##########
+  conflate=0ms  mv.emit.interval=1000ms
+  job=RUNNING
+    order mv-by-ticker                 records=18386 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  VALIDATION PASSED — all six checks
+
+########## FIX     input-conflation OFF, emit 250ms ##########
+  conflate=0ms  mv.emit.interval=250ms
+  job=RUNNING
+    order mv-by-ticker                 records=38773 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+  VALIDATION PASSED — all six checks
+
+FIX TEST DONE
