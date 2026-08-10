@@ -1,0 +1,12 @@
+Producer rate vs consumer rate, P=4, recommended settings.
+Saturation = the point where CONSUMED stops tracking PRODUCED.
+
+requested   produced/s     consumed/s     ratio     busy%   
+2000        2177           6850           3.15      19.7    
+5000        5446           3985           0.73      30.8    
+10000       11258          3252           0.29      37.9    
+20000       22476          3074           0.14      35.5    
+40000       44955          2683           0.06      34.3    
+
+ratio ~1.0 = keeping up.  ratio < 1.0 = falling behind, backlog growing.
+PRODCONS DONE

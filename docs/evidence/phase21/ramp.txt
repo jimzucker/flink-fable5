@@ -1,0 +1,13 @@
+RAMP: current config (P=4, 4 partitions, 4 slots), recommended settings.
+Ramping until backpressure appears. Rates are MEASURED, not requested.
+
+requested    actual tr/s    actual px/s    busy%     backpressure% 
+job=RUNNING
+2000         198            1979           ?         ?             
+5000         495            4950           28.7      0.0           
+10000        988            9884           30.6      0.0           
+20000        2111           21108          33.8      0.0           
+40000        2898           28979          36.0      0.0           
+80000        8440           84401          23.9      0.0           
+
+RAMP DONE

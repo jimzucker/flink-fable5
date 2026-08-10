@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-Local consumer (source intake) rate from the Flink REST API.
+Local consumer (source intake) COUNTER from the Flink REST API.
+
+Reports the cumulative numRecordsOut counter, not the instantaneous
+numRecordsOutPerSecond rate. A single sample of the per-second metric is noisy
+and, taken right after a generator restart, catches the job mid-catch-up -- it
+read 465/s on a load the pipeline demonstrably sustained at ~2,950/s. Sample
+this counter twice and divide by elapsed time, exactly as the producer rate is
+measured.
 
 The metric is NAMESPACED by operator: "Source__trades-source.numRecordsOutPerSecond",
 with a subtask-index prefix at vertex level ("0.Source__..."). Querying the bare
@@ -47,7 +54,7 @@ def main():
             # Use the BARE task-level name. The operator-namespaced variants
             # (Source__x..., parse-x...) both exist inside a chained task, so
             # summing them double-counts: a 30 rec/s generator reported 60.
-            want = ["numRecordsOutPerSecond"]
+            want = ["numRecordsOut"]
             if not want:
                 continue
             try:
@@ -62,7 +69,7 @@ def main():
                     pass
         per_source[v["name"][:38]] = vt
         total += vt
-    print(f"CONSUMED total={total:,.0f} rec/s")
+    print(f"COUNTER total={total:,.0f}")
     for k, val in per_source.items():
         print(f"    {k:40s} {val:>10,.0f}/s")
 
