@@ -70,11 +70,18 @@ is stale. It should not be used, and the terraform variable now documents why.
 Same columns as the AWS status. Local has no KPUs or partition billing, so those
 read $0 / n/a — kept in place so the two tables line up.
 
-| Condition | rec/s | Parallelism | Utilization % | Total $/hr | Flink KPU | Flink $/hr | BackPressure | Kafka partitions | Kafka $/hr |
-|---|---|---|---|---|---|---|---|---|---|
-| SQL, conflation **off** | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
-| SQL, conflation 250ms | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
-| SQL, conflation 100ms | 2,933 | 4 | ~35% | **0.00** | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+| Condition | in trades/s | in prices/s | out positions/s | out MV/s | Parallelism | Utilization % | Total $/hr | Flink KPU | Flink $/hr | BackPressure | Kafka partitions | Kafka $/hr |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **SQL, defaults (recommended)** | 268 | 2,680 | **341** | **707** | 4 | ~35% | 0.00 | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+| SQL, conflation **off** | 268 | 2,680 | 341 | ~2,931 | 4 | ~35% | 0.00 | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+| SQL, input conflation 250ms | 268 | 2,680 | 341 | 374 | 4 | ~35% | 0.00 | n/a (4 slots) | 0.00 | 0.0% | 4 | 0.00 |
+
+*out positions/s = both position topics combined (214 + 127). out MV/s = both
+market-value topics combined (577 + 130 on the defaults).*
+
+The input columns are the generator's rate; the pipeline kept up in every run
+(0% backpressure), so no ceiling was found locally. The output columns are what
+Kafka charges for.
 
 **`rec/s` here is the GENERATOR rate, not capacity.** The pipeline kept up in
 every condition — backpressure 0.0%, busy ~35% — so these runs never found a
