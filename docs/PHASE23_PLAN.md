@@ -11,7 +11,8 @@ producer runs concurrently with the consumer.
 |---|---|
 | Symbols | 100 unique |
 | Source partitions | **2**, then **4** |
-| Price window | tumbling, **250ms** |
+| Price handling | **`conflate=0`** — no input window; always holds the newest tick |
+| Output rate | **`emit=1000`** (positions 500) — publish at most 1/sec per key |
 | Outputs | `position/account/symbol`, `position/symbol`, then join prices → `mv/account/symbol`, `mv/symbol` |
 
 Four outputs, two key shapes, market values on the same two keys as positions.
@@ -46,21 +47,35 @@ One table per run, standard format:
 
 Plus correctness/ordering/staleness alongside.
 
-## One thing to expect, stated up front
+## Why not the 250ms tumbling window
 
-**A 250ms tumbling window on prices is the configuration Phase 21 measured as
-producing ~2-3 second stale market values** — 0% exact, because the window
-discards the newest tick before it is used. So the "market value == position ×
-FINAL price" check is expected to FAIL on all four runs.
+The original plan specified a 250ms tumbling window on prices. Dropped, because
+it is strictly worse on both axes — measured in Phase 21 on identical input:
 
-That is not a new defect and not a reason to stop: staleness will be reported as
-a distribution rather than pass/fail, so the four runs stay comparable and the
-window's cost is quantified at each partition count. Positions, completeness and
-ordering should all pass regardless.
+| | records published | staleness | exact |
+|---|---|---|---|
+| 250ms tumbling window | 55,389 | 2,929ms | 0% |
+| **`conflate=0` + `emit=1000`** | **18,386** | **0ms** | **100%** |
 
-If the intent is to see the window's behaviour across partition counts, this
-plan does that. If the intent is a correct pipeline, the Phase 21 finding
-applies: reduce the output, not the input.
+It costs 3x MORE writes AND returns stale values. There is no trade being made.
+
+The reason is structural: a tumbling window reduces the **input**, discarding the
+newest tick before anything uses it. An emit interval reduces the **output**,
+publishing the newest value less often. Same volume goal; only one of them throws
+away the answer.
+
+Consequence for this phase: the correctness checks can now actually pass, so a
+failure means something. On the windowed config every run would have reported the
+same expected failure and the 2->4 partition signal would have been harder to read.
+
+If the window's behaviour across partition counts is wanted, add it as runs 5-6
+rather than putting a known defect under all four.
+
+**Caveat on that recommendation:** those figures come from 100 symbols at
+2,000 prices/s with 4 partitions. The window has not been tested at 2 partitions
+specifically. The mechanism is about which tick survives rather than how many
+readers there are, so partition count should not change it — but that is
+reasoning, not measurement.
 
 ## Open question carried in
 

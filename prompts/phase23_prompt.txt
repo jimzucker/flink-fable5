@@ -9,9 +9,11 @@ User: "lets run 2 cycle one producing and consuming, then run producers queue up
 data, then run to see difference so 4 runs in this plan"
 
 PIPELINE
-  100 unique symbols; source partitions 2 then 4; prices on a 250ms TUMBLING
-  window; outputs position/account/symbol and position/symbol, then join prices
-  for market value on the SAME two keys.
+  100 unique symbols at 2,000 prices/s; source partitions 2 then 4;
+  sql.price.conflate.ms=0 (no input window) with mv.emit.interval.ms=1000 and
+  position.emit.interval.ms=500 (output rate limit); outputs
+  position/account/symbol and position/symbol, then join prices for market value
+  on the SAME two keys.
 
 FOUR RUNS
   1. 2 partitions, LIVE     (producer and consumer together)
@@ -28,14 +30,22 @@ CHECKS, EVERY RUN, EVERY OUTPUT
   backwards, no older price used after a newer one, no consumer left on a
   superseded value), staleness p50/p90/p99/max.
 
-EXPECT UP FRONT
-  A 250ms tumbling window on prices is exactly the config Phase 21 measured as
-  producing ~2-3s stale market values, 0% exact -- the window discards the
-  newest tick before it is used. The "MV == position x FINAL price" check is
-  EXPECTED TO FAIL on all four runs. Staleness is therefore reported as a
-  distribution, not pass/fail, so the runs stay comparable and the window's cost
-  is quantified per partition count. Positions, completeness and ordering should
-  pass regardless.
+WHY NOT THE 250ms TUMBLING WINDOW (originally specified, dropped)
+  Phase 21 measured it on identical input as strictly worse on BOTH axes:
+    250ms tumbling window   55,389 records   2,929ms stale   0% exact
+    conflate=0 + emit=1000  18,386 records       0ms stale  100% exact
+  It costs 3x MORE writes AND returns stale values -- no trade is being made.
+  A window reduces the INPUT and discards the newest tick before it is used; an
+  emit interval reduces the OUTPUT and publishes the newest value less often.
+
+  Consequence: the correctness checks can now actually pass, so a failure means
+  something. On the windowed config all four runs would report the same expected
+  failure and the 2->4 partition signal would be harder to read.
+
+  Caveat: those figures are from 4 partitions. The window has not been tested at
+  2 partitions; the mechanism is about which tick survives rather than how many
+  readers there are, so it should not differ -- but that is reasoning, not
+  measurement.
 
 CARRIED-IN OPEN QUESTION
   Salt is a parallelism device and should not affect correctness, yet DataStream
