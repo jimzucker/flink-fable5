@@ -1,6 +1,25 @@
-PHASE 22 — verify the working config on AWS and Confluent
-==========================================================
+PHASE 22 — like-for-like: local vs AWS vs Confluent
+====================================================
 User: "close phase 21 and make aws and confluent test a new phase"
+User: "goal of the new phase is to do a like for like aws/confluent to local"
+
+GOAL
+  Same config, same feed, same measurements, in all three environments, in ONE
+  table. Every cross-environment number published so far was measured a
+  different way in each place -- that is what forced the retractions. Fix the
+  method first, measure second.
+
+WHAT MUST BE IDENTICAL
+  config      SQL conflate=0 emit=1000 / DataStream salt=8 emit=1000
+  feed        200 symbols, 2,000 prices/s, 200 trades/s, adaptive, 30% IPO
+  partitions  16 everywhere   (local is 4 -- must raise)
+  parallelism 8 everywhere    (local is 4 slots -- must raise)
+  measures    six checks, ordering checks, staleness percentiles, in/out rates
+
+NOT COMPARABLE, AND THE TABLE MUST SAY SO
+  Local throughput is source-bound at ~5-6k rec/s (measured 31% busy, 0%
+  backpressure at P=2 and P=4 during a drain). Local gives correctness,
+  ordering, staleness and volume -- NOT capacity.
 
 CARRIED IN FROM PHASE 21
   Working configs, validated locally, both engines:

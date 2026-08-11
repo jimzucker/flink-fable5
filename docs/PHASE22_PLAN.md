@@ -1,64 +1,78 @@
-# Phase 22 — verify the working config on AWS and Confluent
+# Phase 22 — like-for-like: local vs AWS vs Confluent
 
-**Prerequisite:** Phase 21 established the working configurations locally and
-proved the old ones are dominated. This phase confirms they hold at real scale
-and closes the cross-platform comparison.
+**Goal: run the SAME configuration, the SAME feed, and the SAME measurements in
+all three environments, and put them in one table.**
+
+Every cross-environment number this project has published so far was measured a
+different way in each place, which is what forced the retractions. This phase
+fixes the method first and measures second.
 
 ---
 
-## Why this phase exists
+## What "like-for-like" requires
 
-Two things are known to be wrong in the published numbers:
+| dimension | must be identical | notes |
+|---|---|---|
+| Engine config | SQL: `conflate=0`, `emit=1000`<br>DataStream: `salt.factor=8`, `emit=1000` | the working configs from Phase 21 |
+| Feed | 200 symbols, 2,000 prices/s, 200 trades/s, adaptive keying, 30% IPO | simple numbers so correctness is checkable |
+| Partitions | 16 everywhere | local is currently 4 — **must be raised** |
+| Parallelism | 8 everywhere | local is currently capped at 4 slots — **must be raised** |
+| Measurements | six checks, ordering checks, staleness percentiles, in/out rates | one validator, one status table |
 
-1. **Every AWS SQL figure was measured on the broken config.** The Phase 20
-   scripts set `sql.price.conflate.ms=250` with `mv.emit.interval.ms=0` --
-   input reduce ON, output reduce OFF, backwards on both. SQL was publishing 3x
-   more records than necessary and doing the work to produce them, so its
-   throughput is understated and the DataStream-vs-SQL gap is overstated.
-2. **AWS DataStream runs had `price.salt.factor=1`**, the vulnerable default.
-   Final values were correct, but in-flight ordering was never checked -- the
-   ordering check did not exist when those ran.
+## Known blockers, to resolve BEFORE measuring
+
+1. **Local is 4 partitions / 4 slots.** Raise to 16 / 8 or the parallelism
+   column cannot match.
+2. **Local Kafka is source-bound at ~5,000-6,000 rec/s** (measured: 31% busy,
+   0% backpressure at both P=2 and P=4 during a drain). So **throughput is NOT
+   comparable from local** — only correctness and ordering are. State this in
+   the table rather than letting the numbers imply otherwise.
+3. **Confluent cannot yet run the working config.** Terraform deploys the `dml/`
+   files individually and never references a statement set, so
+   `confluent/sql/working/statement_set.sql` needs a new resource.
+4. **Unverified: whether Confluent exposes an output reduce.** AWS uses the
+   upsert-kafka option `sink.buffer-flush.interval`; Confluent uses managed
+   tables (`changelog.mode`, `key.format`, `value.format`). Test with a CREATE
+   TABLE before assuming. If it is absent, Confluent cannot run the working
+   config at all — which is a capability finding, not a performance one.
+
+## What is comparable, and what is not
+
+| | local | AWS | Confluent |
+|---|---|---|---|
+| Correctness (six checks) | ✓ | ✓ | ✓ |
+| Ordering (as_of / price / ending stale) | ✓ | ✓ | ✓ |
+| Staleness percentiles | ✓ | ✓ | ✓ |
+| Output volume (records published) | ✓ | ✓ | ✓ |
+| **Throughput / capacity** | **✗ source-bound** | ✓ | ✓ |
+| Cost | n/a ($0) | ✓ | ✓ |
+
+Being explicit about the ✗ is the point. Local throughput measures the laptop's
+Kafka, not the pipeline.
 
 ## Steps
 
-### 1. Fix the shipping default (code, free)
-`price.salt.factor` defaults to 1, which disables the event-time guard on the
-DataStream path. Change to 8 and re-verify locally.
-
-### 2. AWS correctness at scale (~$3, in flight at phase start)
-Both working configs, 200 symbols, salted feed, 16 partitions. Confirms the
-local result and runs the ordering check on AWS for the first time.
-
-### 3. AWS throughput, re-measured on the working config (~$4)
-SQL at P=20 with the correct settings, against the 6,106 rec/s already on record
-for the broken config. Same rig, same feed, one variable. This is what decides
-whether the DataStream-vs-SQL gap survives.
-
-### 4. Confluent (~$3, needs work first)
-* `confluent/sql/working/statement_set.sql` is written but **terraform deploys
-  the dml/ files individually and never references a statement set** -- it needs
-  a new resource before it is reachable.
-* **Unverified: whether Confluent Cloud exposes an output reduce at all.** On AWS
-  that is the upsert-kafka option `sink.buffer-flush.interval`; Confluent uses
-  managed tables with `changelog.mode` / `key.format` / `value.format`, and the
-  docs did not confirm an equivalent. Test with a CREATE TABLE before assuming.
-* If it is not expressible, that is the finding: the fix is only half portable,
-  which is a more useful platform difference than a throughput number.
+1. **Free, local:** raise local partitions to 16 and slots to 8; change
+   `price.salt.factor` default 1 -> 8; re-verify both engines.
+2. **AWS (~$3):** both working configs, correctness + ordering + volume.
+   *(In flight at phase start.)*
+3. **AWS (~$4):** throughput on the working SQL config, against the 6,106 rec/s
+   on record for the broken one.
+4. **Confluent:** resolve blockers 3 and 4 first, then the same run.
 
 ## Pre-declared interpretation
 
-* **SQL on the working config beats 6,106 rec/s materially** -> the published
-  DataStream-vs-SQL gap is overstated and must be restated.
-* **No material change** -> the gap stands, and the conflation setting affects
-  correctness but not throughput.
+* **SQL working config materially beats 6,106 rec/s** -> the published
+  DataStream-vs-SQL gap is overstated and gets restated.
 * **Confluent cannot express the output reduce** -> report as a platform
-  capability difference, not a performance result.
+  capability difference; do not substitute a throughput number for it.
+* **Any environment differs on correctness or ordering** -> that is the headline,
+  ahead of any speed comparison.
 
 ## Method rules carried forward
 
-* Test BOTH engines; three conclusions changed in Phase 21 once the second was
-  measured.
-* Local first for any code change; AWS only for what needs real Kafka.
+* Test BOTH engines — three conclusions changed in Phase 21 once the second was.
+* Local first for code; cloud only for what needs real Kafka.
 * One condition, recorded, committed, then the next.
 * Verify launches by log CONTENT, never a process count or exit code.
 * Unconditional teardown plus an independent watchdog.
