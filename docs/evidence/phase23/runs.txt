@@ -1,0 +1,184 @@
+PHASE 23 — 100 symbols @ 2,000 prices/s, conflate=0 + emit=1000
+Eight runs: {sql, datastream} x {2,4} partitions x {live, backlog}
+
+########## RUN: sql, 2 partitions, LIVE 15:16:13Z ##########
+  job=RUNNING, generating 150s (producer + consumer together)
+  METRICS in_trades/s=1,434 in_prices/s=15,333 parallelism=2 busy=22.2% backpressure=0.0% subtasks=22
+  streamed: trades=46200 prices=462000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 2342 duplicates, 43858 unique of 46200
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=36542 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=20000 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=105979 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=22655 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: sql, 2 partitions, BACKLOG 15:23:18Z ##########
+  queuing 150s with Flink DOWN
+  job=RUNNING, draining static backlog (producer idle)
+  METRICS in_trades/s=1,067 in_prices/s=10,667 parallelism=2 busy=11.4% backpressure=0.0% subtasks=22
+  streamed: trades=32000 prices=320000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 1573 duplicates, 30427 unique of 32000
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=14227 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=4173 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=32879 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=6923 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: sql, 4 partitions, LIVE 15:31:16Z ##########
+  job=RUNNING, generating 150s (producer + consumer together)
+  METRICS in_trades/s=1,490 in_prices/s=15,400 parallelism=4 busy=17.7% backpressure=0.0% subtasks=44
+  streamed: trades=46200 prices=462000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 2342 duplicates, 43858 unique of 46200
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=36983 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=21266 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=97640 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=22476 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: sql, 4 partitions, BACKLOG 15:38:17Z ##########
+  queuing 150s with Flink DOWN
+  job=RUNNING, draining static backlog (producer idle)
+  METRICS in_trades/s=1,067 in_prices/s=10,667 parallelism=4 busy=6.5% backpressure=0.0% subtasks=44
+  streamed: trades=32000 prices=320000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 1573 duplicates, 30427 unique of 32000
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=11507 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=2470 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=20215 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=4735 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: datastream, 2 partitions, LIVE 15:46:15Z ##########
+  job=RUNNING, generating 150s (producer + consumer together)
+  METRICS in_trades/s=1,433 in_prices/s=15,333 parallelism=2 busy=4.8% backpressure=0.0% subtasks=16
+  streamed: trades=46200 prices=462000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 2342 duplicates, 43858 unique of 46200
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=36390 keys=500  as_of-backwards=2  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=19512 keys=100  as_of-backwards=9  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=92770 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=18576 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: datastream, 2 partitions, BACKLOG 15:53:18Z ##########
+  queuing 150s with Flink DOWN
+  job=RUNNING, draining static backlog (producer idle)
+  METRICS in_trades/s=1,067 in_prices/s=10,667 parallelism=2 busy=0.1% backpressure=0.0% subtasks=16
+  streamed: trades=32000 prices=320000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 1573 duplicates, 30427 unique of 32000
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=4844 keys=500  as_of-backwards=140  price-backwards=0  keys ending stale=3
+    order position-by-ticker           records=1114 keys=100  as_of-backwards=121  price-backwards=0  keys ending stale=5
+    order mv-by-account-ticker         records=2990 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=601 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: datastream, 4 partitions, LIVE 16:01:15Z ##########
+  job=RUNNING, generating 150s (producer + consumer together)
+  METRICS in_trades/s=1,432 in_prices/s=15,333 parallelism=4 busy=3.0% backpressure=0.0% subtasks=32
+  streamed: trades=46200 prices=462000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 2342 duplicates, 43858 unique of 46200
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=36355 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=19444 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=93116 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=18356 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## RUN: datastream, 4 partitions, BACKLOG 16:08:18Z ##########
+  queuing 150s with Flink DOWN
+  job=RUNNING, draining static backlog (producer idle)
+  METRICS in_trades/s=1,067 in_prices/s=10,667 parallelism=4 busy=0.1% backpressure=0.0% subtasks=32
+  streamed: trades=32000 prices=320000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+    [PASS] dedup: 1573 duplicates, 30427 unique of 32000
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=4107 keys=500  as_of-backwards=1017  price-backwards=0  keys ending stale=184
+    order position-by-ticker           records=1026 keys=100  as_of-backwards=280  price-backwards=0  keys ending stale=23
+    order mv-by-account-ticker         records=2998 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=600 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+PHASE 23 RUNS DONE
