@@ -344,7 +344,13 @@ public final class SqlPipeline {
                     + "           CAST(JSON_VALUE(`val`, '$.price') AS DECIMAL(18, 2)) AS price,\n"
                     + "           CAST(JSON_VALUE(`val`, '$.event_time') AS BIGINT) AS event_time,\n"
                     + "           ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(`val`, '$.symbol')\n"
-                    + "                              ORDER BY `proc_ts` DESC) AS rn\n"
+                    // ORDER BY event_ts, NOT proc_ts. Ordering by processing time
+                    // is last-ARRIVAL-wins, and arrival order is not event order:
+                    // salted/adaptive price keys spread one symbol across
+                    // partitions on purpose, so a stale tick can arrive after a
+                    // newer one and win. That is the same defect fixed in the
+                    // DataStream market-value operators in Phase 20.
+                    + "                              ORDER BY `event_ts` DESC) AS rn\n"
                     + "    FROM `" + PRICES + "`\n"
                     + "  ) WHERE rn = 1\n"
                     + ")";

@@ -1,0 +1,17 @@
+conflate=0 dedup ORDER BY event_ts (was proc_ts)
+100 symbols @ 2,000 prices/s, P=4, adaptive keying (out-of-order feed)
+baseline with proc_ts: 100% exact, 0ms, 0 violations
+job=RUNNING, generating 150s
+streamed: trades=40000 prices=400000 symbols=100
+published: pos=500 posTkr=100 mv=500 mvTkr=100
+consumer-visible ordering (upsert topics, offset order == per-key order):
+  order position-by-account-ticker   records=31875 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order position-by-ticker           records=17989 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order mv-by-account-ticker         records=77727 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  order mv-by-ticker                 records=18790 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+  MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+      beyond  2000ms: 0 of 500 (0.0%)
+  MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+      beyond  2000ms: 0 of 100 (0.0%)
+VALIDATION PASSED — all six checks
+EVENT_TS TEST DONE
