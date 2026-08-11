@@ -1,0 +1,40 @@
+DataStream at density: 100 symbols @ 2,000 prices/s, P=4.
+Same conditions as the SQL dense run, for direct comparison.
+
+########## DataStream, local price conflator OFF ##########
+  pipeline.mode=datastream
+  mv.emit.interval.ms=1000
+  price.salt.factor=1
+  job=RUNNING, generating 150s
+  streamed: trades=40000 prices=400000 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=31617 keys=500  as_of-backwards=265  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=16640 keys=100  as_of-backwards=96  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=80466 keys=500  as_of-backwards=490  price-backwards=490  keys ending stale=0
+    order mv-by-ticker                 records=15923 keys=100  as_of-backwards=100  price-backwards=100  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+  VALIDATION PASSED — all six checks
+
+########## DataStream, local price conflator ON (salt 8) ##########
+  pipeline.mode=datastream
+  mv.emit.interval.ms=1000
+  price.salt.factor=8
+  job=RUNNING, generating 150s
+  streamed: trades=40200 prices=400785 symbols=100
+  published: pos=500 posTkr=100 mv=500 mvTkr=100
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=31558 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=16882 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=81695 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=16194 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 500 (0.0%)
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+        beyond  2000ms: 0 of 100 (0.0%)
+  VALIDATION PASSED — all six checks
+
+DS DENSE DONE
