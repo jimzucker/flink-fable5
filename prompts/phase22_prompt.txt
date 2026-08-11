@@ -1,0 +1,42 @@
+PHASE 22 — verify the working config on AWS and Confluent
+==========================================================
+User: "close phase 21 and make aws and confluent test a new phase"
+
+CARRIED IN FROM PHASE 21
+  Working configs, validated locally, both engines:
+    SQL:        sql.price.conflate.ms=0, mv.emit.interval.ms=1000
+    DataStream: price.salt.factor=8,     mv.emit.interval.ms=1000
+  Both: 100% exact market values, 0ms staleness, zero ordering violations.
+
+  Rule: reduce the OUTPUT, never the INPUT. An output reduce publishes the
+  newest value less often; an input reduce (tumbling window) throws the newest
+  value away.
+
+TWO KNOWN DEFECTS IN THE PUBLISHED AWS NUMBERS
+  1. Every AWS SQL figure ran with input reduce ON and output reduce OFF --
+     backwards on both. SQL published 3x more records than necessary, so its
+     throughput is understated and the DataStream-vs-SQL gap is overstated.
+  2. AWS DataStream ran with price.salt.factor=1, the vulnerable default. Final
+     values were correct but in-flight ordering was never checked; the ordering
+     check did not exist yet.
+
+STEPS
+  1. Change price.salt.factor default 1 -> 8, re-verify locally (free).
+  2. AWS correctness at scale, both working configs (~$3). First time the
+     ordering check runs on AWS.
+  3. AWS throughput on the working SQL config vs the 6,106 rec/s on record
+     for the broken one (~$4). Decides whether the gap survives.
+  4. Confluent (~$3) -- but NOT yet reachable:
+       * terraform deploys dml/ files individually and never references a
+         statement set, so confluent/sql/working/statement_set.sql needs a new
+         resource.
+       * UNVERIFIED whether Confluent exposes an output reduce at all. AWS uses
+         the upsert-kafka option sink.buffer-flush.interval; Confluent uses
+         managed tables. Test with a CREATE TABLE before assuming.
+       * If not expressible, THAT is the finding -- the fix is half portable,
+         which beats another throughput number.
+
+PRE-DECLARED INTERPRETATION
+  SQL working config materially beats 6,106 rec/s -> restate the published gap.
+  No material change -> the gap stands; conflation affects correctness only.
+  Confluent cannot express the output reduce -> platform capability finding.
