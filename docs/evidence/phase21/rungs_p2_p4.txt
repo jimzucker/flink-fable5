@@ -1,0 +1,8 @@
+Rungs at FIXED load: 5,000 prices/s + 500 trades/s, 100 symbols.
+Recommended settings (conflate=0, mv.emit=1000).
+
+P      consumed/s     busy%        backpr%    vs P=2        
+2      11838          27.2         0.0        1.00x         
+4      14436          28.9         0.0        1.22x         
+
+RUNGS DONE

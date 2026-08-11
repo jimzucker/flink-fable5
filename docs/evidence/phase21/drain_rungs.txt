@@ -1,0 +1,11 @@
+FIXED-BACKLOG DRAIN, generator STOPPED during measurement.
+Backlog: 120s of 8,000 prices/s + 800 trades/s = ~1.06M records.
+
+P      drain rec/s    busy%      backpr%    vs P=2      
+  P=2 building backlog 120s (no Flink running)
+2      4781           31.1       0.0        1.00x       
+  P=4 building backlog 120s (no Flink running)
+4      5849           31.9       0.0        1.22x       
+
+busy% should be HIGH here -- if it is low the backlog drained before sampling.
+DRAIN DONE
