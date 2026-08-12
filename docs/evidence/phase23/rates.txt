@@ -1,0 +1,5 @@
+SUSTAINED RATES — backlog sized so it cannot drain inside the sample
+100 symbols, ~3.2M record backlog, P=4, conflate=0 + emit=1000
+
+########## sql, P=4, large backlog 23:17:46Z ##########
+  building backlog 6 min (Flink down)

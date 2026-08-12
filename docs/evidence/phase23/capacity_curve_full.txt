@@ -1,0 +1,13 @@
+CAPACITY CURVE — does consumption plateau or decline?
+Each step is a FRESH rig, so backlog state is identical at every load.
+
+requested | in_trades/s | in_prices/s | out_pos/s | out_mv/s | par | busy% | bp%
+requested=2000 ROW in_trades=940 in_prices=9,400 out_pos=0 out_mv=0 par=2 busy=21.3 bp=2.5
+requested=4000 ROW in_trades=1,682 in_prices=13,190 out_pos=0 out_mv=0 par=2 busy=27.4 bp=19.5
+requested=6000 ROW in_trades=2,521 in_prices=9,153 out_pos=0 out_mv=0 par=2 busy=32.2 bp=22.5
+requested=8000 ROW in_trades=2,997 in_prices=3,975 out_pos=0 out_mv=0 par=2 busy=31.5 bp=44.1
+requested=12000 ROW in_trades=3,270 in_prices=3,969 out_pos=0 out_mv=0 par=2 busy=32.1 bp=43.9
+requested=20000 ROW in_trades=2,856 in_prices=3,840 out_pos=0 out_mv=0 par=2 busy=32.2 bp=43.7
+
+PLATEAU = capacity limit, normal. DECLINE = real anomaly.
+CURVE DONE

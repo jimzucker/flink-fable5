@@ -14,6 +14,13 @@ measurements against a saturating backlog.
 Usage: python3 scripts/local_utilization.py   (needs the rig running)
 """
 import json, urllib.request, sys
+
+# NOTE: the /backpressure endpoint's backpressuredRatio reported 0.0% on a job
+# whose per-subtask backPressuredTimeMsPerSecond metric read 999 (99.9%).
+# Reading the ratio produced "0% backpressure" in every table for a severely
+# backpressured pipeline, and several conclusions were drawn from it. Use the
+# per-subtask METRIC, not the endpoint ratio.
+
 B="http://localhost:8081"
 def get(p):
     with urllib.request.urlopen(B+p, timeout=10) as r: return json.load(r)

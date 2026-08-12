@@ -118,10 +118,17 @@ public final class PositionPipeline {
         KeyedStream<PriceCents, String> prices = pricesParsed.keyBy(p -> p.symbol);
 
         // --- Dedup ---
-        DataStream<Trade> deduped = trades
-                .keyBy(t -> t.tradeId)
-                .process(new DedupByTradeId(dedupTtlMs))
-                .name("dedup-by-trade-id").uid("dedup-by-trade-id");
+        // NO deduplication: the upstream publisher emits each trade_id once
+        // and the pipeline runs exactly-once, so there is nothing to remove.
+        // This drops a stateful stage that held every trade_id for
+        // dedup.state.ttl.ms and ran 9-22% busy while the pipeline was
+        // backpressured.
+        //
+        // NOTE if a duplicate-capable source is ever reinstated: exactly-once
+        // does NOT cover this. It stops Flink reprocessing after a failure, not
+        // duplicates already in Kafka -- those are processed exactly once EACH
+        // and the position doubles.
+        DataStream<Trade> deduped = trades;
 
         // --- Output 1: position by account+ticker ---
         DataStream<Position> accountPositions = deduped

@@ -1,0 +1,7 @@
+CAPACITY CURVE — does consumption plateau or decline?
+Each step is a FRESH rig, so backlog state is identical at every load.
+
+requested | in_trades/s | in_prices/s | out_pos/s | out_mv/s | par | busy% | bp%
+requested=2000 ROW in_trades=850 in_prices=9,667 out_pos=307 out_mv=660 par=2 busy=20.9 bp=2.6
+requested=4000 ROW in_trades=1,013 in_prices=11,026 out_pos=443 out_mv=505 par=2 busy=27.9 bp=20.0
+requested=6000 ROW in_trades=2,568 in_prices=10,595 out_pos=573 out_mv=458 par=2 busy=30.6 bp=21.2

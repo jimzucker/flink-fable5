@@ -119,7 +119,7 @@ variable "generator_seed" {
 
 variable "generator_duplicate_ratio" {
   type    = number
-  default = 0.05
+  default = 0
 }
 
 variable "generator_price_cents_override" {

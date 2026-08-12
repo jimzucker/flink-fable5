@@ -1,0 +1,52 @@
+SUBTASK TRACE at 20k prices/s (where st1 went to zero)
+idle% = waiting for input; busy% = working; bp% = blocked downstream
+job=RUNNING, tracing
+TRACE 10 samples, 12s apart
+   t  source                  st     rec/s   idle%   busy%    bp%
+
+  12  trades                   0              0.0%    0.1%  99.9%
+  12  trades                   1              0.0%    0.1%  99.9%
+  12  prices                   0              0.0%    0.2%  99.8%
+  12  prices                   1              0.0%    0.2%  99.8%
+
+  24  trades                   0       244    0.0%    0.1%  99.9%
+  24  trades                   1       227    0.0%    0.1%  99.9%
+  24  prices                   0       462    0.0%    0.2%  99.8%
+  24  prices                   1       373    0.0%    0.2%  99.8%
+
+  36  trades                   0       442    0.0%    0.1%  99.9%
+  36  trades                   1       433    0.0%    0.1%  99.9%
+  36  prices                   0       368    0.0%    0.2%  99.8%
+  36  prices                   1       412    0.0%    0.2%  99.8%
+
+  48  trades                   0       339    0.0%    0.1%  99.9%
+  48  trades                   1       327    0.0%    0.1%  99.9%
+  48  prices                   0       549    0.0%    0.2%  99.8%
+  48  prices                   1       390    0.0%    0.1%  99.9%
+
+  60  trades                   0       378    0.0%    0.1%  99.9%
+  60  trades                   1       376    0.0%    0.1%  99.9%
+  60  prices                   0       319    0.0%    0.1%  99.9%
+  60  prices                   1       302    0.0%    0.1%  99.9%
+
+  72  trades                   0       374    0.0%    0.1%  99.9%
+  72  trades                   1       345    0.0%    0.1%  99.9%
+  72  prices                   0       561    0.0%    0.2%  99.8%
+  72  prices                   1       461    0.0%    0.2%  99.8%
+
+  84  trades                   0       439    0.0%    0.1%  99.9%
+  84  trades                   1       411    0.0%    0.1%  99.9%
+  84  prices                   0       248    0.0%    0.1%  99.9%
+  84  prices                   1       384    0.0%    0.1%  99.9%
+
+  96  trades                   0       286    0.0%    0.1%  99.9%
+  96  trades                   1       298    0.0%    0.1%  99.9%
+  96  prices                   0       467    0.0%    0.2%  99.8%
+  96  prices                   1       268    0.0%    0.1%  99.9%
+
+ 108  trades                   0       347    0.0%    0.1%  99.9%
+ 108  trades                   1       342    0.0%    0.1%  99.9%
+ 108  prices                   0       440    0.0%    0.1%  99.9%
+ 108  prices                   1       451    0.0%    0.1%  99.9%
+
+TRACE DONE

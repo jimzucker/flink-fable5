@@ -1,0 +1,65 @@
+UPSERT-KEY FIX — did the SinkUpsertMaterializer bottleneck go away?
+BEFORE: SinkMaterializer 85-93% busy / 0% bp; sources 99.9% bp;
+        prices consumed ~768-1,257/s against ~21,000/s produced
+
+job=RUNNING
+--- operators in the job graph ---
+    Source: trades_src[1] -> Calc[2]
+    Source: prices_src[17] -> Calc[18]
+    Deduplicate[4] -> (Calc[5], Calc[10])
+    GroupAggregate[7] -> Calc[8] -> ConstraintEnforcer[9] -> Sink: Writer 
+    GroupAggregate[15]
+    GroupAggregate[12] -> Calc[13] -> ConstraintEnforcer[14] -> Sink: Writ
+    GroupAggregate[28]
+    Deduplicate[20] -> Calc[21]
+    Join[23] -> Calc[24]
+    GroupAggregate[26] -> ConstraintEnforcer[27] -> Sink: Writer -> Sink: 
+    Join[30] -> Calc[31]
+    GroupAggregate[33] -> ConstraintEnforcer[34] -> Sink: Writer -> Sink: 
+   SinkMaterializer present: False
+
+--- backpressure by operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades_src[1] -> Calc[2]               2    0.5%    0.6%   99.0%
+  Source: prices_src[17] -> Calc[18]             2    0.1%    0.0%   99.9%
+  Deduplicate[4] -> (Calc[5], Calc[10])          2    9.3%    0.0%   90.7%
+  GroupAggregate[7] -> Calc[8] -> ConstraintEn   2   15.9%   84.1%    0.0%
+  GroupAggregate[15]                             2    9.2%    0.0%   90.8%
+  GroupAggregate[12] -> Calc[13] -> Constraint   2   17.8%   82.2%    0.0%
+  GroupAggregate[28]                             2    1.9%   19.2%   78.8%
+  Deduplicate[20] -> Calc[21]                    2    4.5%    0.0%   95.5%
+  Join[23] -> Calc[24]                           2   47.8%    0.0%   52.2%
+  GroupAggregate[26] -> ConstraintEnforcer[27]   2   91.3%    8.7%    0.0%
+  Join[30] -> Calc[31]                           2   17.4%   81.7%    0.9%
+  GroupAggregate[33] -> ConstraintEnforcer[34]   2   27.2%   72.8%    0.0%
+  
+  LIKELY BOTTLENECK: GroupAggregate[26] -> ConstraintEnforcer[27] -> Sink: Writer -> Sink: Committer
+    busy 91.3%  backpressure 0.0%  parallelism 2
+    -- it works while everything upstream waits on it
+
+--- source rates ---
+  SOURCE PROBE
+    trades  produced     2,133/s   p0=530/s  p1=536/s  p2=535/s  p3=532/s
+            partition share: 25%  25%  25%  25%
+    prices  produced    22,000/s   p0=5,278/s  p1=5,054/s  p2=5,725/s  p3=5,942/s
+            partition share: 24%  23%  26%  27%
+    trades  consumed         0/s   st0=0/s  st1=0/s
+    prices  consumed         0/s   st0=0/s  st1=0/s
+
+--- correctness ---
+  streamed: trades=292000 prices=2920000 symbols=100
+    [PASS] dedup: 14562 duplicates, 277438 unique of 292000
+    [FAIL] positions by account+ticker: 500 keys, 500 mismatched
+    [FAIL] positions by ticker: 100 keys, 100 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=205018 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=103265 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=1309419 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=198794 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+    MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+    [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+  VALIDATION FAILED — 2 check(s)
+FIX VERIFY DONE

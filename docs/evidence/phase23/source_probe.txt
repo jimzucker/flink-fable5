@@ -1,0 +1,23 @@
+SOURCE PROBE — P=2, per-partition produced vs consumed
+Testing the pair where inbound FELL: 8k then 20k prices/s
+job=RUNNING
+
+--- requested 8000 prices/s ---
+  SOURCE PROBE
+    trades  produced       880/s   p0=219/s  p1=221/s  p2=219/s  p3=221/s
+            partition share: 25%  25%  25%  25%
+    prices  produced     8,533/s   p0=2,049/s  p1=1,967/s  p2=2,213/s  p3=2,304/s
+            partition share: 24%  23%  26%  27%
+    trades  consumed     3,347/s   st0=1,487/s  st1=1,860/s
+    prices  consumed     4,703/s   st0=2,471/s  st1=2,232/s
+
+--- requested 20000 prices/s ---
+  SOURCE PROBE
+    trades  produced     2,200/s   p0=546/s  p1=545/s  p2=558/s  p3=551/s
+            partition share: 25%  25%  25%  25%
+    prices  produced    22,000/s   p0=5,283/s  p1=5,059/s  p2=5,709/s  p3=5,950/s
+            partition share: 24%  23%  26%  27%
+    trades  consumed     1,578/s   st0=791/s  st1=787/s
+    prices  consumed       768/s   st0=411/s  st1=357/s
+
+SOURCE PROBE DONE

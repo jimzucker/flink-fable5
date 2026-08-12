@@ -1,0 +1,24 @@
+SOURCE PROBE with MORE BROKER THREADS (network 8, io 16)
+Baseline: 8k -> produced 8,533 consumed 4,703 | 20k -> produced 22,000 consumed 768
+Testing the pair where inbound FELL: 8k then 20k prices/s
+job=RUNNING
+
+--- requested 8000 prices/s ---
+  SOURCE PROBE
+    trades  produced       880/s   p0=221/s  p1=223/s  p2=216/s  p3=221/s
+            partition share: 25%  25%  24%  25%
+    prices  produced     8,541/s   p0=2,051/s  p1=1,969/s  p2=2,215/s  p3=2,306/s
+            partition share: 24%  23%  26%  27%
+    trades  consumed     3,464/s   st0=1,529/s  st1=1,935/s
+    prices  consumed     6,035/s   st0=3,159/s  st1=2,876/s
+
+--- requested 20000 prices/s ---
+  SOURCE PROBE
+    trades  produced     2,200/s   p0=550/s  p1=550/s  p2=548/s  p3=551/s
+            partition share: 25%  25%  25%  25%
+    prices  produced    21,333/s   p0=5,122/s  p1=4,908/s  p2=5,535/s  p3=5,768/s
+            partition share: 24%  23%  26%  27%
+    trades  consumed     1,891/s   st0=951/s  st1=940/s
+    prices  consumed     1,257/s   st0=1,257/s  st1=0/s
+
+SOURCE PROBE DONE

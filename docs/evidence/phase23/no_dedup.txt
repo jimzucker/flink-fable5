@@ -1,0 +1,66 @@
+SIMPLIFIED PIPELINE — unique publisher, exactly-once, no dedup stage
+
+########## sql — no dedup, unique publisher, exactly-once ##########
+  job=RUNNING
+  --- operators ---
+      Source: trades_src[1] -> (Calc[2], Calc[7])
+      Source: prices_src[14] -> Calc[15]
+      GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: Wri
+      GroupAggregate[12]
+      GroupAggregate[9] -> Calc[10] -> ConstraintEnforcer[11] -> Sink: W
+      Deduplicate[17] -> Calc[18]
+      Join[20] -> Calc[21] -> ConstraintEnforcer[22]
+      SinkMaterializer[22] -> Sink: Writer -> Sink: Committer
+      Deduplicate[24] -> Calc[25]
+      Join[27] -> Calc[28] -> ConstraintEnforcer[29] -> Sink: Writer -> 
+      dedup operator present: True
+  --- status row ---
+     ROW in_trades=0 in_prices=1,433 out_pos=323 out_mv=666 par=2 busy=25.6 bp=4.4
+  --- correctness ---
+     streamed: trades=42200 prices=422000 symbols=100
+       [PASS] uniqueness: 42200 unique of 42200 streamed, 0 duplicates seen
+       [PASS] positions by account+ticker: 500 keys, 0 mismatched
+       [PASS] positions by ticker: 100 keys, 0 mismatched
+       [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+     consumer-visible ordering (upsert topics, offset order == per-key order):
+       order position-by-account-ticker   records=35075 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       order position-by-ticker           records=19523 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       order mv-by-account-ticker         records=89143 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       order mv-by-ticker                 records=20367 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+       MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+       [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+       [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+     VALIDATION PASSED — all six checks
+
+########## datastream — no dedup, unique publisher, exactly-once ##########
+  job=RUNNING
+  --- operators ---
+      Source: trades-source -> parse-trade
+      Source: prices-source -> parse-price
+      position-by-account-ticker -> sink-position-account-ticker: Writer
+      position-by-ticker -> sink-position-ticker: Writer -> sink-positio
+      price-conflate-local
+      mv-by-account-ticker -> sink-mv-account-ticker: Writer -> sink-mv-
+      mv-by-ticker -> sink-mv-ticker: Writer -> sink-mv-ticker: Committe
+      dedup operator present: False
+  --- status row ---
+     ROW in_trades=400 in_prices=0 out_pos=283 out_mv=566 par=2 busy=7.2 bp=0.0
+  --- correctness ---
+     streamed: trades=43000 prices=430000 symbols=100
+       [PASS] uniqueness: 43000 unique of 43000 streamed, 0 duplicates seen
+       [PASS] positions by account+ticker: 500 keys, 0 mismatched
+       [PASS] positions by ticker: 100 keys, 0 mismatched
+       [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+     consumer-visible ordering (upsert topics, offset order == per-key order):
+       order position-by-account-ticker   records=34819 keys=500  as_of-backwards=8  price-backwards=0  keys ending stale=1
+       order position-by-ticker           records=17972 keys=100  as_of-backwards=3  price-backwards=0  keys ending stale=0
+       order mv-by-account-ticker         records=84645 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       order mv-by-ticker                 records=16575 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+       MV by account staleness: n=500 exact=500 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+       MV by ticker  staleness: n=100 exact=100 (100%)  p50=0ms p90=0ms p99=0ms max=0ms
+       [PASS] MV by account == position x FINAL price: 500 checked, 0 wrong, 0 conflation lag
+       [PASS] MV by ticker == position x FINAL price: 100 checked, 0 wrong, 0 conflation lag
+     VALIDATION PASSED — all six checks
+
+NO-DEDUP VERIFY DONE

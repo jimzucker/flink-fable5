@@ -134,8 +134,15 @@ public final class StreamValidator {
         System.out.printf("published: pos=%d posTkr=%d mv=%d mvTkr=%d%n",
                 outPosAcct.size(), outPosTkr.size(), outMvAcct.size(), outMvTkr.size());
 
-        check("dedup", dupes[0] > 0 && seenTrades.size() == tradeCount[0] - dupes[0],
-                dupes[0] + " duplicates, " + seenTrades.size() + " unique of " + tradeCount[0]);
+        // The publisher is unique by contract and the pipeline has no dedup
+        // stage, so the assertion is now "no duplicates arrived" rather than
+        // "duplicates arrived and were removed". Requiring dupes > 0 would fail
+        // a correct run against a correct source.
+        check("uniqueness", dupes[0] == 0 && seenTrades.size() == tradeCount[0],
+                seenTrades.size() + " unique of " + tradeCount[0] + " streamed, "
+                + dupes[0] + " duplicates seen"
+                + (dupes[0] > 0 ? "  <-- SOURCE EMITTED DUPLICATES: positions will"
+                                  + " overcount, the pipeline no longer dedups" : ""));
 
         int bad = 0;
         for (Map.Entry<String, String> e : outPosAcct.entrySet()) {

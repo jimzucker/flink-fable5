@@ -1,0 +1,57 @@
+ALL-VERTEX TRACE at 20k prices/s — find the operator that is the bottleneck
+Sources show 99.9% backpressure, so the cause is DOWNSTREAM of them.
+Bottleneck = HIGH busy, LOW backpressure. Everything upstream is blocked.
+idle% = waiting for input; busy% = working; bp% = blocked downstream
+job=RUNNING, tracing
+TRACE 5 samples, 15s apart
+   t  operator                        st     rec/s   idle%   busy%    bp%
+
+  15  Source: trades_src[1] -> Calc[   0              0.0%    0.1%  99.9%
+  15  Source: prices_src[17] -> Calc   0              0.0%    0.2%  99.8%
+  15  Deduplicate[4] -> (Calc[5], Ca   0              0.0%   18.4%  81.6%
+  15  GroupAggregate[7] -> Calc[8] -   0             61.9%   38.1%   0.0%
+  15  GroupAggregate[15]               0              0.0%   20.7%  79.3%
+  15  GroupAggregate[12] -> Calc[13]   0             63.0%   37.0%   0.0%
+  15  Deduplicate[20] -> Calc[21]      0              0.0%   15.1%  84.9%
+  15  Join[23] -> Calc[24] -> Constr   0              0.0%   66.1%  33.9%
+  15  SinkMaterializer[25] -> Sink:    0             15.2%   84.8%   0.0%
+  15  Deduplicate[27] -> Calc[28]      0             85.4%   14.6%   0.0%
+  15  Join[30] -> Calc[31] -> Constr   0             46.3%   53.7%   0.0%
+
+  30  Source: trades_src[1] -> Calc[   0       378    0.0%    0.1%  99.9%
+  30  Source: prices_src[17] -> Calc   0       268    0.0%    0.2%  99.8%
+  30  Deduplicate[4] -> (Calc[5], Ca   0       636    0.0%   17.7%  82.3%
+  30  GroupAggregate[7] -> Calc[8] -   0         0   60.5%   39.5%   0.0%
+  30  GroupAggregate[15]               0       682    0.0%   19.3%  80.7%
+  30  GroupAggregate[12] -> Calc[13]   0         0   63.0%   37.0%   0.0%
+  30  Deduplicate[20] -> Calc[21]      0       766    0.0%   15.5%  84.5%
+  30  Join[23] -> Calc[24] -> Constr   0     4,745    0.0%   63.8%  36.2%
+  30  SinkMaterializer[25] -> Sink:    0         0   13.3%   86.7%   0.0%
+  30  Deduplicate[27] -> Calc[28]      0       445   85.2%   14.8%   0.0%
+  30  Join[30] -> Calc[31] -> Constr   0         0   42.8%   57.2%   0.0%
+
+  45  Source: trades_src[1] -> Calc[   0       371    0.0%    0.1%  99.9%
+  45  Source: prices_src[17] -> Calc   0       452    0.0%    0.2%  99.8%
+  45  Deduplicate[4] -> (Calc[5], Ca   0       722    0.0%   19.8%  80.2%
+  45  GroupAggregate[7] -> Calc[8] -   0         0   58.9%   41.1%   0.0%
+  45  GroupAggregate[15]               0       657    0.0%   18.0%  82.0%
+  45  GroupAggregate[12] -> Calc[13]   0       706   59.0%   41.0%   0.0%
+  45  Deduplicate[20] -> Calc[21]      0       746    0.0%   17.0%  83.0%
+  45  Join[23] -> Calc[24] -> Constr   0     4,454    0.0%   65.2%  34.8%
+  45  SinkMaterializer[25] -> Sink:    0         0    7.2%   92.8%   0.0%
+  45  Deduplicate[27] -> Calc[28]      0       397   81.6%   18.4%   0.0%
+  45  Join[30] -> Calc[31] -> Constr   0         0   39.3%   60.7%   0.0%
+
+  60  Source: trades_src[1] -> Calc[   0       377    0.0%    0.1%  99.9%
+  60  Source: prices_src[17] -> Calc   0       486    0.0%    0.2%  99.8%
+  60  Deduplicate[4] -> (Calc[5], Ca   0       691    0.0%   21.9%  78.1%
+  60  GroupAggregate[7] -> Calc[8] -   0         0   56.5%   43.5%   0.0%
+  60  GroupAggregate[15]               0       657    0.0%   21.1%  78.9%
+  60  GroupAggregate[12] -> Calc[13]   0         0   59.0%   41.0%   0.0%
+  60  Deduplicate[20] -> Calc[21]      0         0    0.0%   17.0%  83.0%
+  60  Join[23] -> Calc[24] -> Constr   0     6,475    0.0%   61.3%  38.7%
+  60  SinkMaterializer[25] -> Sink:    0         0    8.8%   91.2%   0.0%
+  60  Deduplicate[27] -> Calc[28]      0       383   80.5%   19.5%   0.0%
+  60  Join[30] -> Calc[31] -> Constr   0         0   44.3%   55.7%   0.0%
+
+TRACE DONE

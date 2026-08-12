@@ -1,0 +1,6 @@
+CAPACITY CURVE — does consumption plateau or decline?
+Each step is a FRESH rig, so backlog state is identical at every load.
+
+requested  produced/s     consumed/s     busy%    
+2000       2172           2400           0.7%     
+4000       4267           3361           0.5%     

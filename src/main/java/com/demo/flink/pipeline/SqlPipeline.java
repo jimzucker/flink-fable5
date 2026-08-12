@@ -274,14 +274,25 @@ public final class SqlPipeline {
      * deduplication, which is insert-only and emits immediately, so downstream
      * aggregation sees exactly the stream the DataStream job sees.
      */
+    /**
+     * Trades, read straight through -- NO deduplication.
+     *
+     * The upstream publisher is guaranteed to emit each trade_id once, and the
+     * pipeline runs exactly-once, so there is nothing to dedup. Removing the
+     * operator removes a stateful stage that held every trade_id for
+     * dedup.state.ttl.ms and measured 9-22% busy while the pipeline was
+     * backpressured.
+     *
+     * NOTE for anyone reinstating a duplicate-capable source: exactly-once does
+     * NOT cover this. It stops Flink reprocessing after a failure; it does
+     * nothing about a duplicate already in Kafka. Two records with the same
+     * trade_id are processed exactly once EACH and the position doubles. If the
+     * source can retry, replay, or publish from more than one writer, the
+     * dedup stage has to come back.
+     */
     private static final String DEDUPED_CTE =
             "deduped AS (\n"
-            + "  SELECT `val` FROM (\n"
-            + "    SELECT `val`,\n"
-            + "      ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(`val`, '$.trade_id')\n"
-            + "                         ORDER BY `proc_ts` ASC) AS rn\n"
-            + "    FROM `" + TRADES + "`\n"
-            + "  ) WHERE rn = 1\n"
+            + "  SELECT `val` FROM `" + TRADES + "`\n"
             + ")";
 
     /**

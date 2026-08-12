@@ -83,7 +83,11 @@ public final class DataGenerator {
         // key-space behaviour, not the names.
         int numTickers = Math.max(1, params.getInt("generator.tickers", 10));
         long seed = params.getLong("generator.seed", 42L);
-        double duplicateRatio = params.getDouble("generator.duplicate.ratio", 0.05);
+        // Default 0: the publisher is unique by contract, and the pipeline no
+        // longer has a dedup stage to exercise. Set >0 only to test what a
+        // duplicate-capable source would do -- positions will overcount by
+        // exactly this ratio, which is the point of the test.
+        double duplicateRatio = params.getDouble("generator.duplicate.ratio", 0.0);
         long priceCentsOverride = params.getLong("generator.price.cents.override", -1L);
         // Fixed trade quantity. Correctness checking is far easier when the
         // arithmetic is trivial: with qty=1 and price=$1.00, a position is

@@ -1,0 +1,49 @@
+P=2 driven hard — what is the actual constraint?
+busy% = Flink task threads working; CPU% = real processor usage
+job=RUNNING
+
+--- generator requested 2000 prices/s ---
+  RATES inbound=5,476/s outbound=426/s parallelism=2 busy=24.6%
+    valid: still consuming at sample end
+  flink-fable5-generator-1           cpu=1.03%    mem=206.4MiB / 7.654GiB
+  flink-fable5-grafana-1             cpu=0.05%    mem=206.2MiB / 7.654GiB
+  flink-fable5-taskmanager-1         cpu=48.67%   mem=1.462GiB / 7.654GiB
+  flink-fable5-prometheus-1          cpu=0.04%    mem=119.9MiB / 7.654GiB
+  flink-fable5-jobmanager-1          cpu=2.82%    mem=1014MiB / 7.654GiB
+  flink-fable5-kafka-1               cpu=12.03%   mem=538.2MiB / 7.654GiB
+  host cores: 8
+
+--- generator requested 8000 prices/s ---
+  RATES inbound=3,269/s outbound=628/s parallelism=2 busy=31.4%
+    valid: still consuming at sample end
+  flink-fable5-generator-1           cpu=2.30%    mem=223.4MiB / 7.654GiB
+  flink-fable5-grafana-1             cpu=0.29%    mem=206.2MiB / 7.654GiB
+  flink-fable5-taskmanager-1         cpu=158.26%  mem=1.493GiB / 7.654GiB
+  flink-fable5-prometheus-1          cpu=8.76%    mem=120MiB / 7.654GiB
+  flink-fable5-jobmanager-1          cpu=26.18%   mem=1.061GiB / 7.654GiB
+  flink-fable5-kafka-1               cpu=199.06%  mem=762.7MiB / 7.654GiB
+  host cores: 8
+
+--- generator requested 20000 prices/s ---
+  RATES inbound=1,701/s outbound=463/s parallelism=2 busy=36.1%
+    valid: still consuming at sample end
+  flink-fable5-generator-1           cpu=3.44%    mem=240.5MiB / 7.654GiB
+  flink-fable5-grafana-1             cpu=0.11%    mem=206.3MiB / 7.654GiB
+  flink-fable5-taskmanager-1         cpu=56.24%   mem=1.54GiB / 7.654GiB
+  flink-fable5-prometheus-1          cpu=1.47%    mem=120.1MiB / 7.654GiB
+  flink-fable5-jobmanager-1          cpu=1.26%    mem=1.054GiB / 7.654GiB
+  flink-fable5-kafka-1               cpu=5.12%    mem=901.7MiB / 7.654GiB
+  host cores: 8
+
+--- generator requested 40000 prices/s ---
+  RATES inbound=1,812/s outbound=312/s parallelism=2 busy=32.2%
+    valid: still consuming at sample end
+  flink-fable5-generator-1           cpu=5.77%    mem=227.4MiB / 7.654GiB
+  flink-fable5-grafana-1             cpu=0.09%    mem=86.66MiB / 7.654GiB
+  flink-fable5-taskmanager-1         cpu=63.66%   mem=1.583GiB / 7.654GiB
+  flink-fable5-prometheus-1          cpu=0.00%    mem=59.91MiB / 7.654GiB
+  flink-fable5-jobmanager-1          cpu=0.70%    mem=1.092GiB / 7.654GiB
+  flink-fable5-kafka-1               cpu=4.24%    mem=940MiB / 7.654GiB
+  host cores: 8
+
+P2 HARD DONE
