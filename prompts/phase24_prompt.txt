@@ -1,0 +1,34 @@
+PHASE 24 — positions only: strip prices, measure the floor
+===========================================================
+User: "lets commit and start a new phase, remove prices, just emit position by
+symbol and position by account&symbol and measure"
+
+PIPELINE
+  Trades only. Prices not consumed. Outputs: position-by-account-ticker and
+  position-by-ticker. Removed: price source, current-price reduce, both joins,
+  both MV sinks. No dedup (unique publisher + exactly-once, from Phase 23).
+  100 symbols; partitions 2 then 4; both engines.
+
+WHAT IT ANSWERS
+  1. What the price path actually costs, at the same trade rate.
+  2. Where the floor is -- position-only is the simplest correct topology.
+  3. Whether the earlier bottleneck survives. The trace named
+     SinkUpsertMaterializer on the MV path; removing that path should remove it.
+     If throughput does NOT improve, that operator was not the limit and the
+     investigation was chasing a symptom.
+
+PRE-DECLARED INTERPRETATION
+  throughput rises materially -> the price path was the cost
+  throughput unchanged (~4,000/s) -> constraint is the trade path or the
+                                     environment, and the materializer hunt was
+                                     chasing a symptom
+  utilization still ~31% -> that number is independent of topology, which would
+                            be the most interesting outcome of the three
+
+CARRIED IN FROM PHASE 23
+  Trade dedup removed from both engines; generator no longer injects duplicates;
+  validator asserts uniqueness instead of requiring duplicates.
+  The PRICE operator Deduplicate(keep=[LastRow], order=[ROWTIME]) is a different
+  thing and stays -- it is the current-price reduce, not trade dedup.
+  Every backpressure figure before Phase 23 was wrong: the /backpressure endpoint
+  read 0.0% on a job that was 99.9% blocked. Use per-subtask metrics.
