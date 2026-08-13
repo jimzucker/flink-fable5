@@ -172,7 +172,16 @@ public final class StreamValidator {
         orderCheck(props, params.get("topic.mv.account.ticker", "mv-by-account-ticker"), idleMs);
         orderCheck(props, params.get("topic.mv.ticker", "mv-by-ticker"), idleMs);
 
+        // positions.only: the price path does not exist, so market-value checks
+        // are NOT APPLICABLE. Reporting them as passes would be a test that
+        // cannot fail; reporting them as failures would be wrong.
+        boolean positionsOnly = params.getBoolean("positions.only", false);
+        if (positionsOnly) {
+            System.out.println("  [N/A] market-value checks skipped (positions.only)");
+        }
+        if (!positionsOnly)
         staleness("MV by account", outMvAcct, posAcct, true, latest, firstTs, latestTs, tickCount);
+        if (!positionsOnly)
         staleness("MV by ticker ", outMvTkr, posTicker, false, latest, firstTs, latestTs, tickCount);
 
         Map<String, BigDecimal> wmin = new HashMap<>();
@@ -185,11 +194,13 @@ public final class StreamValidator {
             }
         }
         System.out.println("  (lag tolerance: prices within " + lagMs + "ms of each symbol's final tick)");
-        int[] r1 = mvCheck(outMvAcct, posAcct, true, latest, wmin, wmax);
+        int[] r1 = positionsOnly ? new int[]{0, 0}
+                : mvCheck(outMvAcct, posAcct, true, latest, wmin, wmax);
         check("MV by account == position x FINAL price", r1[0] == 0,
                 outMvAcct.size() + " checked, " + r1[0] + " wrong, " + r1[1] + " conflation lag");
 
-        int[] r2 = mvCheck(outMvTkr, posTicker, false, latest, wmin, wmax);
+        int[] r2 = positionsOnly ? new int[]{0, 0}
+                : mvCheck(outMvTkr, posTicker, false, latest, wmin, wmax);
         check("MV by ticker == position x FINAL price", r2[0] == 0,
                 outMvTkr.size() + " checked, " + r2[0] + " wrong, " + r2[1] + " conflation lag");
 

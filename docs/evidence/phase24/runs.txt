@@ -1,0 +1,124 @@
+PHASE 24 — positions only, price path removed entirely
+Trades 2,000/s, 100 symbols. Full pipeline baseline: ~4,000 rec/s ceiling, ~31% busy.
+
+########## sql, 2 partitions, POSITIONS ONLY 22:28:08Z ##########
+  job=RUNNING
+      Source: trades_src[1] -> (Calc[2], Calc[7])
+      GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: W
+      GroupAggregate[9] -> Calc[10] -> ConstraintEnforcer[11] -> Sink:
+      price operators present: False
+  ROW in_trades=7,984 in_prices=0 out_pos=927 out_mv=0 par=2 busy=0.0 bp=0.0
+  --- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades_src[1] -> (Calc[2], Calc[7])    2    0.0%  100.0%    0.0%
+  GroupAggregate[4] -> Calc[5] -> ConstraintEn   2    0.0%  100.0%    0.0%
+  GroupAggregate[9] -> Calc[10] -> ConstraintE   2    0.0%  100.0%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+  streamed: trades=434000 prices=434000 symbols=100
+    [PASS] uniqueness: 434000 unique of 434000 streamed, 0 duplicates seen
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=108824 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=22651 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    [N/A] market-value checks skipped (positions.only)
+    [PASS] MV by account == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## sql, 4 partitions, POSITIONS ONLY 22:36:04Z ##########
+  job=RUNNING
+      Source: trades_src[1] -> (Calc[2], Calc[7])
+      GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: W
+      GroupAggregate[9] -> Calc[10] -> ConstraintEnforcer[11] -> Sink:
+      price operators present: False
+  ROW in_trades=3,986 in_prices=0 out_pos=689 out_mv=0 par=4 busy=1.3 bp=0.0
+  --- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades_src[1] -> (Calc[2], Calc[7])    4    1.7%   98.3%    0.0%
+  GroupAggregate[4] -> Calc[5] -> ConstraintEn   4    1.3%   98.7%    0.0%
+  GroupAggregate[9] -> Calc[10] -> ConstraintE   4    1.0%   99.0%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+  streamed: trades=422000 prices=422000 symbols=100
+    [PASS] uniqueness: 422000 unique of 422000 streamed, 0 duplicates seen
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=103548 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=21078 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    [N/A] market-value checks skipped (positions.only)
+    [PASS] MV by account == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## datastream, 2 partitions, POSITIONS ONLY 22:42:41Z ##########
+  job=RUNNING
+      Source: trades-source -> parse-trade
+      position-by-account-ticker -> sink-position-account-ticker: Writ
+      position-by-ticker -> sink-position-ticker: Writer -> sink-posit
+      price operators present: False
+  ROW in_trades=8,000 in_prices=0 out_pos=689 out_mv=0 par=2 busy=2.3 bp=0.0
+  --- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades-source -> parse-trade           2    0.5%   99.5%    0.0%
+  position-by-account-ticker -> sink-position-   2    3.3%   96.7%    0.0%
+  position-by-ticker -> sink-position-ticker:    2    3.1%   96.9%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+  streamed: trades=422000 prices=422000 symbols=100
+    [PASS] uniqueness: 422000 unique of 422000 streamed, 0 duplicates seen
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=102135 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=20816 keys=100  as_of-backwards=3  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    [N/A] market-value checks skipped (positions.only)
+    [PASS] MV by account == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## datastream, 4 partitions, POSITIONS ONLY 22:49:17Z ##########
+  job=RUNNING
+      Source: trades-source -> parse-trade
+      position-by-account-ticker -> sink-position-account-ticker: Writ
+      position-by-ticker -> sink-position-ticker: Writer -> sink-posit
+      price operators present: False
+  ROW in_trades=2,807 in_prices=0 out_pos=689 out_mv=0 par=4 busy=1.1 bp=0.0
+  --- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades-source -> parse-trade           4    0.3%   99.7%    0.0%
+  position-by-account-ticker -> sink-position-   4    1.9%   98.1%    0.0%
+  position-by-ticker -> sink-position-ticker:    4    1.3%   98.7%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+  streamed: trades=420000 prices=420000 symbols=100
+    [PASS] uniqueness: 420000 unique of 420000 streamed, 0 duplicates seen
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=101645 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=20700 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    [N/A] market-value checks skipped (positions.only)
+    [PASS] MV by account == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+PHASE 24 DONE

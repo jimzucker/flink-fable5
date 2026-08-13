@@ -1,0 +1,40 @@
+PHASE 24 — positions only, price path removed entirely
+Trades 2,000/s, 100 symbols. Full pipeline baseline: ~4,000 rec/s ceiling, ~31% busy.
+
+########## sql, 2 partitions, POSITIONS ONLY 22:55:55Z ##########
+  job=RUNNING
+      Source: trades_src[1] -> (Calc[2], Calc[7])
+      GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: W
+      GroupAggregate[9] -> Calc[10] -> ConstraintEnforcer[11] -> Sink:
+      price operators present: False
+  ROW in_trades=11,928 in_prices=0 out_pos=832 out_mv=0 par=2 busy=0.0 bp=0.0
+    valid: still consuming at sample end (14,400/s)
+  --- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades_src[1] -> (Calc[2], Calc[7])    2    0.0%  100.0%    0.0%
+  GroupAggregate[4] -> Calc[5] -> ConstraintEn   2    0.0%  100.0%    0.0%
+  GroupAggregate[9] -> Calc[10] -> ConstraintE   2    0.0%  100.0%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+  streamed: trades=572000 prices=572000 symbols=100
+    [PASS] uniqueness: 572000 unique of 572000 streamed, 0 duplicates seen
+    [PASS] positions by account+ticker: 500 keys, 0 mismatched
+    [PASS] positions by ticker: 100 keys, 0 mismatched
+    [PASS] completeness sum(accounts)==ticker: 100 tickers, 0 disagree
+  consumer-visible ordering (upsert topics, offset order == per-key order):
+    order position-by-account-ticker   records=144832 keys=500  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order position-by-ticker           records=30113 keys=100  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-account-ticker         records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    order mv-by-ticker                 records=0 keys=0  as_of-backwards=0  price-backwards=0  keys ending stale=0
+    [N/A] market-value checks skipped (positions.only)
+    [PASS] MV by account == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+    [PASS] MV by ticker == position x FINAL price: 0 checked, 0 wrong, 0 conflation lag
+  VALIDATION PASSED — all six checks
+
+########## sql, 4 partitions, POSITIONS ONLY 23:27:46Z ##########
+  job=RUNNING
+      Source: trades_src[1] -> (Calc[2], Calc[7])
+      GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: W
+      GroupAggregate[9] -> Calc[10] -> ConstraintEnforcer[11] -> Sink:
+      price operators present: False

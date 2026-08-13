@@ -1,0 +1,19 @@
+SINGLE OUTPUT — SQL, position by symbol only, 10,000 trades/s
+One downstream edge, so numRecordsOut == actual intake.
+job=RUNNING
+    Source: trades_src[1] -> Calc[2]
+    GroupAggregate[4] -> Calc[5] -> ConstraintEnforcer[6] -> Sink: Writer 
+--- settle 180s, then sample ---
+  ROW in_trades=29,970 in_prices=0 out_pos=117 out_mv=0 par=2 busy=2.9 bp=0.0
+    valid: still consuming at sample end (35,000/s)
+--- per-operator ---
+  operator                                     par   busy%   idle%     bp%
+  Source: trades_src[1] -> Calc[2]               2    3.2%   96.8%    0.0%
+  GroupAggregate[4] -> Calc[5] -> ConstraintEn   2    3.4%   96.6%    0.0%
+  
+  No operator shows high busy with low backpressure.
+  Either nothing is saturated, or the sink/external system is the limit.
+--- kafka produced (ground truth) ---
+    trades  produced    10,667/s   p0=2,657/s  p1=2,680/s  p2=2,670/s  p3=2,661/s
+    trades  consumed         0/s   st0=0/s  st1=0/s
+SINGLE OUTPUT DONE

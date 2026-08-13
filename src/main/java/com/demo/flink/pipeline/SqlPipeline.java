@@ -47,6 +47,11 @@ public final class SqlPipeline {
     private SqlPipeline() {
     }
 
+    /** Delivery guarantee, shared by the sink option and the checkpoint mode. */
+    static String deliveryGuaranteeOf(AppConfig params) {
+        return params.get("sink.delivery.guarantee", "exactly-once").trim().toLowerCase();
+    }
+
     public static void main(String[] args) throws Exception {
         run(AppConfig.load(args));
     }
@@ -59,7 +64,19 @@ public final class SqlPipeline {
         if (params.has("pipeline.parallelism")) {
             env.setParallelism(params.getInt("pipeline.parallelism", 2));
         }
-        env.enableCheckpointing(checkpointIntervalMs, CheckpointingMode.EXACTLY_ONCE);
+        // Checkpointing mode follows the delivery guarantee. Setting only the
+        // SINK option leaves checkpoint alignment in exactly-once mode, so the
+        // barrier-alignment cost stays and the comparison measures nothing.
+        CheckpointingMode ckMode =
+                "exactly-once".equals(deliveryGuaranteeOf(params))
+                        ? CheckpointingMode.EXACTLY_ONCE
+                        : CheckpointingMode.AT_LEAST_ONCE;
+        // checkpoint.interval.ms <= 0 disables checkpointing entirely: no
+        // barriers, no snapshots, NO fault tolerance. Only for measuring the
+        // raw ceiling -- a restart loses all state.
+        if (checkpointIntervalMs > 0) {
+            env.enableCheckpointing(checkpointIntervalMs, ckMode);
+        }
 
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env);
         configure(tableEnv, params);
@@ -134,14 +151,22 @@ public final class SqlPipeline {
     }
 
     static void createTables(TableEnvironment tableEnv, AppConfig params) {
+        boolean positionsOnly = params.getBoolean("positions.only", false);
         tableEnv.executeSql(tradesDdl(params));
-        tableEnv.executeSql(pricesDdl(params));
-        tableEnv.executeSql(sinkDdl(params, SINK_POSITION_ACCOUNT_TICKER,
-                params.get("topic.position.account.ticker", "position-by-account-ticker"),
-                positionEmitIntervalMs(params)));
+        if (!params.getBoolean("single.output", false)) {
+            tableEnv.executeSql(sinkDdl(params, SINK_POSITION_ACCOUNT_TICKER,
+                    params.get("topic.position.account.ticker", "position-by-account-ticker"),
+                    positionEmitIntervalMs(params)));
+        }
         tableEnv.executeSql(sinkDdl(params, SINK_POSITION_TICKER,
                 params.get("topic.position.ticker", "position-by-ticker"),
                 positionEmitIntervalMs(params)));
+        // positions.only: do not even declare the price table or the MV sinks,
+        // so the price topic is never consumed and no price operator is planned.
+        if (positionsOnly) {
+            return;
+        }
+        tableEnv.executeSql(pricesDdl(params));
         tableEnv.executeSql(sinkDdl(params, SINK_MV_ACCOUNT_TICKER,
                 params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
                 mvEmitIntervalMs(params)));
@@ -153,10 +178,22 @@ public final class SqlPipeline {
     /** All four INSERTs in ONE statement set — one job graph, one source scan. */
     static StatementSet buildStatementSet(TableEnvironment tableEnv, AppConfig params) {
         StatementSet statements = tableEnv.createStatementSet();
-        statements.addInsertSql(positionByAccountTickerSql());
+        // single.output: ONE consumer, one output -- position by symbol only.
+        // With two position outputs the source forks (Source -> (Calc, Calc))
+        // and numRecordsOut counts each record once PER EDGE, so intake reads
+        // double. One edge makes the number unambiguous.
+        boolean singleOutput = params.getBoolean("single.output", false);
+        if (!singleOutput) {
+            statements.addInsertSql(positionByAccountTickerSql());
+        }
         statements.addInsertSql(positionByTickerSql());
-        statements.addInsertSql(mvByAccountTickerSql(params));
-        statements.addInsertSql(mvByTickerSql(params));
+        // positions.only strips the entire price path: no price source, no
+        // current-price reduce, no joins, no market-value sinks. Isolates the
+        // trade path to establish the floor.
+        if (!params.getBoolean("positions.only", false)) {
+            statements.addInsertSql(mvByAccountTickerSql(params));
+            statements.addInsertSql(mvByTickerSql(params));
+        }
         return statements;
     }
 

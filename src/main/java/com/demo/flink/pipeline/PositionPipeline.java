@@ -43,6 +43,11 @@ public final class PositionPipeline {
 
     private static final Logger LOG = LoggerFactory.getLogger(PositionPipeline.class);
 
+    /** Delivery guarantee, shared by the sink option and the checkpoint mode. */
+    static String deliveryGuaranteeOf(AppConfig params) {
+        return params.get("sink.delivery.guarantee", "exactly-once").trim().toLowerCase();
+    }
+
     public static void main(String[] args) throws Exception {
         AppConfig params = AppConfig.load(args);
 
@@ -78,7 +83,19 @@ public final class PositionPipeline {
         if (params.has("pipeline.parallelism")) {
             env.setParallelism(params.getInt("pipeline.parallelism", 2));
         }
-        env.enableCheckpointing(checkpointIntervalMs, CheckpointingMode.EXACTLY_ONCE);
+        // Checkpointing mode follows the delivery guarantee. Setting only the
+        // SINK option leaves checkpoint alignment in exactly-once mode, so the
+        // barrier-alignment cost stays and the comparison measures nothing.
+        CheckpointingMode ckMode =
+                "exactly-once".equals(deliveryGuaranteeOf(params))
+                        ? CheckpointingMode.EXACTLY_ONCE
+                        : CheckpointingMode.AT_LEAST_ONCE;
+        // checkpoint.interval.ms <= 0 disables checkpointing entirely: no
+        // barriers, no snapshots, NO fault tolerance. Only for measuring the
+        // raw ceiling -- a restart loses all state.
+        if (checkpointIntervalMs > 0) {
+            env.enableCheckpointing(checkpointIntervalMs, ckMode);
+        }
 
         // --- Sources ---
         DataStream<Trade> trades = env
@@ -89,7 +106,12 @@ public final class PositionPipeline {
                 .flatMap(new ParseTradeFunction())
                 .name("parse-trade").uid("parse-trade");
 
-        DataStream<PriceCents> parsedPrices = env
+        // positions.only strips the entire price path -- no price source, no
+        // current-price reduce, no joins, no market-value sinks. Isolates the
+        // trade path to establish the floor.
+        boolean positionsOnly = params.getBoolean("positions.only", false);
+
+        DataStream<PriceCents> parsedPrices = positionsOnly ? null : env
                 .fromSource(
                         stringSource(params, params.get("topic.prices", "prices"), "flink-demo-prices"),
                         WatermarkStrategy.noWatermarks(), "prices-source")
@@ -109,13 +131,14 @@ public final class PositionPipeline {
         int saltFactor = params.getInt("price.salt.factor", 1);
         long localConflateMs = params.getLong("price.salt.conflate.ms", mvRevalIntervalMs);
         DataStream<PriceCents> pricesParsed = parsedPrices;
-        if (saltFactor > 1) {
+        if (!positionsOnly && saltFactor > 1) {
             pricesParsed = parsedPrices
                     .keyBy(p -> LocalPriceConflator.saltedKey(p, saltFactor))
                     .process(new LocalPriceConflator(localConflateMs))
                     .name("price-conflate-local").uid("price-conflate-local");
         }
-        KeyedStream<PriceCents, String> prices = pricesParsed.keyBy(p -> p.symbol);
+        KeyedStream<PriceCents, String> prices =
+                positionsOnly ? null : pricesParsed.keyBy(p -> p.symbol);
 
         // --- Dedup ---
         // NO deduplication: the upstream publisher emits each trade_id once
@@ -130,16 +153,23 @@ public final class PositionPipeline {
         // and the position doubles.
         DataStream<Trade> deduped = trades;
 
-        // --- Output 1: position by account+ticker ---
-        DataStream<Position> accountPositions = deduped
-                .keyBy(t -> t.account + "|" + t.ticker)
-                .process(new PositionAggregator(emitIntervalMs))
-                .name("position-by-account-ticker").uid("position-by-account-ticker");
+        // single.output: ONE consumer, one output -- position by symbol only.
+        // Two outputs make the source fork, and numRecordsOut counts per EDGE,
+        // so intake reads double. One edge makes the number unambiguous.
+        boolean singleOutput = params.getBoolean("single.output", false);
+        DataStream<Position> accountPositions = null;
+        if (!singleOutput) {
+            // --- Output 1: position by account+ticker ---
+            accountPositions = deduped
+                    .keyBy(t -> t.account + "|" + t.ticker)
+                    .process(new PositionAggregator(emitIntervalMs))
+                    .name("position-by-account-ticker").uid("position-by-account-ticker");
 
-        accountPositions
-                .sinkTo(jsonSink(params, params.get("topic.position.account.ticker", "position-by-account-ticker"),
-                        (Position p) -> p.account + "|" + p.ticker))
-                .name("sink-position-account-ticker").uid("sink-position-account-ticker");
+            accountPositions
+                    .sinkTo(jsonSink(params, params.get("topic.position.account.ticker", "position-by-account-ticker"),
+                            (Position p) -> p.account + "|" + p.ticker))
+                    .name("sink-position-account-ticker").uid("sink-position-account-ticker");
+        }
 
         // --- Output 2: position by ticker ---
         DataStream<TickerPosition> tickerPositions = deduped
@@ -152,29 +182,32 @@ public final class PositionPipeline {
                         (TickerPosition p) -> p.ticker))
                 .name("sink-position-ticker").uid("sink-position-ticker");
 
-        // --- Output 3: market value by account+ticker (position x latest price) ---
-        DataStream<MarketValue> mvByAccount = accountPositions
-                .keyBy(p -> p.ticker)
-                .connect(prices)
-                .process(new MarketValueByAccountTicker(mvRevalIntervalMs))
-                .name("mv-by-account-ticker").uid("mv-by-account-ticker");
+        if (!positionsOnly) {
+            // --- Output 3: market value by account+ticker (position x latest price) ---
+            DataStream<MarketValue> mvByAccount = accountPositions
+                    .keyBy(p -> p.ticker)
+                    .connect(prices)
+                    .process(new MarketValueByAccountTicker(mvRevalIntervalMs))
+                    .name("mv-by-account-ticker").uid("mv-by-account-ticker");
 
-        mvByAccount
-                .sinkTo(jsonSink(params, params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
-                        (MarketValue mv) -> mv.account + "|" + mv.ticker))
-                .name("sink-mv-account-ticker").uid("sink-mv-account-ticker");
+            mvByAccount
+                    .sinkTo(jsonSink(params, params.get("topic.mv.account.ticker", "mv-by-account-ticker"),
+                            (MarketValue mv) -> mv.account + "|" + mv.ticker))
+                    .name("sink-mv-account-ticker").uid("sink-mv-account-ticker");
 
-        // --- Output 4: market value by ticker ---
-        DataStream<MarketValue> mvByTicker = tickerPositions
-                .keyBy(p -> p.ticker)
-                .connect(prices)
-                .process(new MarketValueByTicker(mvRevalIntervalMs))
-                .name("mv-by-ticker").uid("mv-by-ticker");
+            // --- Output 4: market value by ticker ---
+            DataStream<MarketValue> mvByTicker = tickerPositions
+                    .keyBy(p -> p.ticker)
+                    .connect(prices)
+                    .process(new MarketValueByTicker(mvRevalIntervalMs))
+                    .name("mv-by-ticker").uid("mv-by-ticker");
 
-        mvByTicker
-                .sinkTo(jsonSink(params, params.get("topic.mv.ticker", "mv-by-ticker"),
-                        (MarketValue mv) -> mv.ticker))
-                .name("sink-mv-ticker").uid("sink-mv-ticker");
+            mvByTicker
+                    .sinkTo(jsonSink(params, params.get("topic.mv.ticker", "mv-by-ticker"),
+                            (MarketValue mv) -> mv.ticker))
+                    .name("sink-mv-ticker").uid("sink-mv-ticker");
+        }
+
 
         LOG.info("Starting flink-demo pipeline against {}", bootstrap);
         env.execute("flink-demo-positions");

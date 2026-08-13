@@ -116,10 +116,28 @@ def main():
     r = {k: (b[k] - a[k]) / secs for k in a}
     busy, bp = util(jid)
     par = max(v.get("parallelism", 0) for v in get(f"/jobs/{jid}")["vertices"])
+
+    # VALIDITY GATE (docs/RUN_CHECKLIST.md): a rate is only a rate if the job is
+    # STILL consuming when the window closes. If it drained and went idle, the
+    # figure is backlog/window and depends on where the sample landed -- which
+    # is exactly how 7,984/s and 3,986/s appeared for the same 2,000/s
+    # generator. Built into local_rates.py and then not carried here.
+    time.sleep(10)
+    c = snapshot(jid)
+    still = ((c["in_trades"] - b["in_trades"]) + (c["in_prices"] - b["in_prices"])) / 10
+    ongoing = r["in_trades"] + r["in_prices"]
+    valid = ongoing > 0 and still > ongoing * 0.2
+
     print(f"ROW in_trades={r['in_trades']:,.0f} in_prices={r['in_prices']:,.0f} "
           f"out_pos={r['out_pos']:,.0f} out_mv={r['out_mv']:,.0f} "
           f"par={par} busy={'?' if busy is None else round(busy,1)} "
           f"bp={'?' if bp is None else round(bp,1)}")
+    if not valid:
+        print(f"  INVALID: job stopped consuming inside the window "
+              f"(post-window {still:,.0f}/s vs sampled {ongoing:,.0f}/s). "
+              f"This is backlog/window, NOT a rate.")
+        return 2
+    print(f"  valid: still consuming at sample end ({still:,.0f}/s)")
     return 0
 
 
