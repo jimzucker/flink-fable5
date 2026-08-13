@@ -171,16 +171,58 @@ question. Do not quote these as precise until they have been repeated.
 
 ## Deliverable — the status table
 
-| Step | Engine | In parts | Consumers / Par | Symbols | Emit | trades/s in | records/s read | **p50** | **p90** | **p99** | **max** | Lag | Correct? |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1A | plain consumer | 4 | 2 | 1,000 | — | | | | | | | | n/a |
-| 1B | plain consumer | 4 | 4 | 1,000 | — | | | | | | | | n/a |
-| 2A | Flink SQL | 4 | 2 | 1,000 | 0ms | | | | | | | | PASS/FAIL |
-| 2B | Flink SQL | 4 | 4 | 1,000 | 0ms | | | | | | | | PASS/FAIL |
+Printed after **each condition completes**, not only at the end.
+
+    Phase 25 — held constant: SQL | local | 4 input partitions
+                              10,000 trades/s | emit 0ms | delivery=none | 2 min window
+
+| # | What | Par | Symbols | Accounts | in trades/s | read/s | Lag | **p50** | **p90** | **p99** | **max** | BackPressure | Correct | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1A | plain consumer | 2 | 1,000 | 5 | | | | | | | | n/a | n/a | |
+| 1B | plain consumer | 4 | 1,000 | 5 | | | | | | | | n/a | n/a | |
+| 2A | Flink positions | 2 | 1,000 | 5 | | | | | | | | | PASS/FAIL | |
+| 2B | Flink positions | 4 | 1,000 | 5 | | | | | | | | | PASS/FAIL | |
 
 Plus the derived line that is the actual finding:
 
     pipeline cost = Step 2 p99 − Step 1 p99, at P=2 and at P=4
+
+### Column notes
+
+* **Latency in ms**, not seconds — at 10k/s with no conflation these land in tens
+  of ms, and seconds would round everything to 0.0.
+* **p99 is the KPI.** p50 is comfort, max is the outlier hunt, p99 is the number
+  worth committing to.
+* **Symbols** is the real cardinality knob: it sets keyed-state size and the
+  number of distinct output keys, so it drives Step 2's work and the size of the
+  correctness comparison.
+* **Accounts** does not affect output cardinality in this phase — positions are
+  emitted by symbol only, so the account string just rides along on each trade.
+  Carried for provenance and cross-phase comparison; it would matter again if
+  position-by-account-symbol were re-enabled.
+* **`read/s` vs `in trades/s`** — divergence invalidates the row no matter how
+  good the latency looks. Lag confirms it independently.
+* **Correct** prints `PASS n/1000`, never a bare PASS. A mismatch prints the
+  first 5 offending symbols with expected vs actual.
+* **Dropped from `RUN_CHECKLIST.md`:** `in prices/s` (prices off), `out MV/s` (no
+  market-value path), and all cost/KPU columns (local: identical on every row).
+
+### Failure rendering
+
+A failed condition prints in place rather than being dropped:
+
+    | 2A | Flink positions | 2 | 1,000 | 5 | 10,008 | 6,240 | GROWING | — | — | — | — | 92.1% | FAIL | NOT KEEPING UP
+         FAIL: 12 symbols mismatched. AAPL expected 1,204 got 1,198 (-6) ...
+         Latency suppressed: not reported for a condition that failed correctness.
+
+Latency is never printed for a condition that failed its correctness gate.
+
+### Validity gate — lag must be measurable
+
+**Flink commits consumer-group offsets only ON CHECKPOINT.** With checkpointing
+disabled, lag reads 0 and a drowning job looks perfect. Step 2 therefore runs with
+checkpointing enabled (60s is fine — its only job here is to commit offsets).
+Step 1 is unaffected: the plain consumer controls its own commits.
 
 ---
 
