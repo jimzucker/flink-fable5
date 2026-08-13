@@ -64,18 +64,25 @@ def main():
     secs = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     topic = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_TOPIC
 
-    t0 = time.time()
+    # Stamp the clock AFTER each sample, not before. newest_as_of() spawns a
+    # docker exec plus a cold kafka-console-consumer JVM and costs 4-8s, so a
+    # timestamp taken before the call predates every record the call returns --
+    # that is what made healthy runs report ~-4.4s of "latency". Reading the
+    # clock on return puts it alongside the records actually observed.
     a = newest_as_of(topic)
+    t0 = time.time()
     if a is None:
         print("EVENT-TIME no as_of found -- topic empty or field missing")
         return 1
     time.sleep(secs)
-    t1 = time.time()
     b = newest_as_of(topic)
+    t1 = time.time()
     if b is None:
         print("EVENT-TIME second sample failed")
         return 1
 
+    # Both endpoints are now measured at the same point in their own call, so
+    # the per-call startup cost cancels in the ratio instead of adding noise.
     wall = (t1 - t0)
     ev = (b - a) / 1000.0
     ratio = ev / wall if wall else 0

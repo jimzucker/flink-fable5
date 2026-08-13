@@ -1,0 +1,11 @@
+P=2 vs P=4 at emit=100ms — same session, 4 partitions, 1000 symbols
+
+########## parallelism=2 (actual=2) requested=200000 emit=100ms job=RUNNING ##########
+  window 35s wall, topic position-by-ticker
+    event time advanced :     35.0s
+    progress ratio      :     1.00   (1.0 = keeping up)
+    end-to-end latency  :      0.6s -> 0.7s
+  
+    KEEPING UP: source time advances as fast as real time
+      produced/s    -1,960,098
+      published/s            0

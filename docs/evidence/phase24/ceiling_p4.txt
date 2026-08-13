@@ -1,0 +1,53 @@
+CEILING — push until event-time ratio < 1.0 twice in a row
+SQL, positions by symbol, P=4, 1000 symbols, delivery=none
+P=2 baseline: kept up at ~360k/s, ceiling ~655k/s
+
+########## requested 400000 trades/s (job=RUNNING) ##########
+  window 36s wall, topic position-by-ticker
+    event time advanced :     35.9s
+    progress ratio      :     0.99   (1.0 = keeping up)
+    end-to-end latency  :     -5.3s -> -4.9s
+  
+    KEEPING UP: source time advances as fast as real time
+      produced/s       799,816
+      published/s        4,275
+
+  window 36s wall, topic position-by-ticker
+    event time advanced :     36.0s
+    progress ratio      :     1.01   (1.0 = keeping up)
+    end-to-end latency  :     -5.0s -> -5.3s
+  
+    KEEPING UP: source time advances as fast as real time
+      produced/s       886,043
+      published/s        4,599
+
+  window 36s wall, topic position-by-ticker
+    event time advanced :     35.3s
+    progress ratio      :     0.98   (1.0 = keeping up)
+    end-to-end latency  :     -3.2s -> -2.4s
+  
+    FALLING BEHIND: processing 98% of real time. Latency grows 1s per minute.
+      produced/s       976,229
+      published/s        5,525
+
+########## requested 800000 trades/s (job=RUNNING) ##########
+  window 37s wall, topic position-by-ticker
+    event time advanced :     27.0s
+    progress ratio      :     0.73   (1.0 = keeping up)
+    end-to-end latency  :     35.2s -> 45.2s
+  
+    FALLING BEHIND: processing 73% of real time. Latency grows 16s per minute.
+      produced/s       710,511
+      published/s        4,700
+
+  window 39s wall, topic position-by-ticker
+    event time advanced :     31.3s
+    progress ratio      :     0.81   (1.0 = keeping up)
+    end-to-end latency  :     64.9s -> 72.3s
+  
+    FALLING BEHIND: processing 81% of real time. Latency grows 11s per minute.
+      produced/s       642,337
+      published/s        5,651
+
+  >>> CEILING: ratio below 1.0 twice consecutively at 800000 requested
+CEILING TEST DONE

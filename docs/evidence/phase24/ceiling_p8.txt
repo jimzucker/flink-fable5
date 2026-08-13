@@ -1,0 +1,33 @@
+CEILING — 8 partitions, parallelism 8, 8 task slots
+P=2/4 partitions: ~655k/s   P=4/4 partitions: ~957k/s
+
+########## requested 800000 (job=RUNNING, parallelism=8, partitions=8) ##########
+  window 38s wall, topic position-by-ticker
+    event time advanced :     40.2s
+    progress ratio      :     1.06   (1.0 = keeping up)
+    end-to-end latency  :     34.0s -> 31.5s
+  
+    KEEPING UP: source time advances as fast as real time
+      produced/s       873,942
+      published/s        4,368
+
+  window 37s wall, topic position-by-ticker
+    event time advanced :     29.2s
+    progress ratio      :     0.80   (1.0 = keeping up)
+    end-to-end latency  :     45.1s -> 52.5s
+  
+    FALLING BEHIND: processing 80% of real time. Latency grows 12s per minute.
+      produced/s       962,775
+      published/s        5,243
+
+  window 37s wall, topic position-by-ticker
+    event time advanced :     33.7s
+    progress ratio      :     0.92   (1.0 = keeping up)
+    end-to-end latency  :     59.6s -> 62.4s
+  
+    FALLING BEHIND: processing 92% of real time. Latency grows 5s per minute.
+      produced/s     1,075,602
+      published/s        5,906
+
+  >>> CEILING at 800000 requested
+P8 TEST DONE
